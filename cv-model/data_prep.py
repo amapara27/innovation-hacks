@@ -63,8 +63,36 @@ def get_data_scaffold():
     A helper to demonstrate how to load paths.
     """
     # TODO: Define your specific class-to-index mapping here
-    # PRODUCT_MAP = {'demo_item1': 0, 'demo_item2': 1, ...}
-    # CONDITION_MAP = {'sealed': 0, 'opened-intact': 1, 'damaged-packaging': 2, ...}
+    PRODUCT_MAP = {
+        'AirPods': 0, 
+        'T-shirt': 1, 
+        'MacBook Pro' : 2, 
+        'Skincare Product' : 3, 
+        'Book' : 4, 
+        'PC Accessory' : 5, 
+        'Kitchen Utensil' : 6
+    }
+
+    CONDITION_MAP = {
+            # Resell candidates
+            'sealed':              0,  # Original shrink wrap intact, untouched
+            'opened-intact':       1,  # Box opened, contents complete, no damage
+
+            # Refurb / warehouse deals candidates  
+            'damaged-packaging':   2,  # Box crushed/torn, contents likely fine
+            'missing-accessories': 3,  # Item present, cables/manual/extras absent
+            'cosmetic-damage':     4,  # Item itself scratched/dented, functional
+
+            # Liquidation candidates
+            'incomplete-set':      5,  # Multi-part product, some parts missing
+
+            # Donate / recycle candidates
+            'functional-no-value': 6,  # Works fine, resale value too low to justify
+            'damaged-functional':  7,  # Visibly broken externally, may still work
+
+            # Recycle / destroy candidates
+            'non-functional':      8,  # Confirmed broken, powers off or won't start
+    }
     
     # Placeholder lists
     # image_paths = glob.glob('data/processed/**/*.jpg')

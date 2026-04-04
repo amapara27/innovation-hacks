@@ -8,16 +8,28 @@ MODEL_PATH = "models/final_tflite/model_quantized.tflite"
 INPUT_SIZE = (224, 224)
 
 # TODO: Update with your specific class names
-PRODUCT_CLASSES = ["Item A", "Item B", "Item C", "Item D", "Item E", "Item F", "Item G", "Item H"]
-CONDITION_CLASSES = ["sealed", "opened-intact", "damaged-packaging", "damaged-product", "broken"]
+PRODUCT_CLASSES = [
+    "AirPods", "T-shirt", "MacBook Pro", "Skincare Product", 
+    "Book", "PC Accessory", "Kitchen Utensil"
+]
+
+CONDITION_CLASSES = [
+    "sealed", "opened-intact", "damaged-packaging", "missing-accessories",
+    "cosmetic-damage", "incomplete-set", "functional-no-value", 
+    "damaged-functional", "non-functional"
+]
 
 # Scoring Weights (Heuristic Example)
 CONDITION_WEIGHTS = {
     "sealed": 10.0,
-    "opened-intact": 8.0,
-    "damaged-packaging": 5.0,
-    "damaged-product": 2.0,
-    "broken": 1.0
+    "opened-intact": 9.0,
+    "damaged-packaging": 7.5,
+    "missing-accessories": 6.5,
+    "cosmetic-damage": 5.5,
+    "incomplete-set": 4.5,
+    "functional-no-value": 3.0,
+    "damaged-functional": 2.0,
+    "non-functional": 1.0
 }
 
 class EdgeAIInference:

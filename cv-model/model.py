@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
-def create_mtl_model(input_shape=(224, 224, 3), num_products=8, num_conditions=5):
+def create_mtl_model(input_shape=(224, 224, 3), num_products=7, num_conditions=9):
     """
     Creates a Multi-Task Learning model with a MobileNetV3-Small backbone.
     
