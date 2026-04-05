@@ -46,6 +46,15 @@ import {
   SimulateStakeResponseSchema,
   StakeRequestSchema,
   StakeResponseSchema,
+  StakeSettlementSourceSchema,
+  StakeCollectRequestSchema,
+  StakeCollectResponseSchema,
+  StakeWithdrawRequestSchema,
+  StakeWithdrawResponseSchema,
+  SimulateStakeTimelineRequestSchema,
+  SimulateStakeTimelineEventSchema,
+  SimulateStakeTimelinePointSchema,
+  SimulateStakeTimelineResponseSchema,
 
   // Leaderboard
   LeaderboardRequestSchema,
@@ -104,6 +113,23 @@ export type SimulateStakeRequest = z.infer<typeof SimulateStakeRequestSchema>;
 export type SimulateStakeResponse = z.infer<typeof SimulateStakeResponseSchema>;
 export type StakeRequest = z.infer<typeof StakeRequestSchema>;
 export type StakeResponse = z.infer<typeof StakeResponseSchema>;
+export type StakeSettlementSource = z.infer<typeof StakeSettlementSourceSchema>;
+export type StakeCollectRequest = z.infer<typeof StakeCollectRequestSchema>;
+export type StakeCollectResponse = z.infer<typeof StakeCollectResponseSchema>;
+export type StakeWithdrawRequest = z.infer<typeof StakeWithdrawRequestSchema>;
+export type StakeWithdrawResponse = z.infer<typeof StakeWithdrawResponseSchema>;
+export type SimulateStakeTimelineRequest = z.infer<
+  typeof SimulateStakeTimelineRequestSchema
+>;
+export type SimulateStakeTimelineEvent = z.infer<
+  typeof SimulateStakeTimelineEventSchema
+>;
+export type SimulateStakeTimelinePoint = z.infer<
+  typeof SimulateStakeTimelinePointSchema
+>;
+export type SimulateStakeTimelineResponse = z.infer<
+  typeof SimulateStakeTimelineResponseSchema
+>;
 
 // ─── Leaderboard ────────────────────────────────────────────────────────────
 

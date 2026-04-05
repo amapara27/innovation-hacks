@@ -40,6 +40,51 @@ export interface StakingInfoResponse {
   stakeVaultAddress?: string;
 }
 
+export type StakeSettlementSource =
+  | "vault_onchain"
+  | "api_payer_onchain"
+  | "demo_accounting";
+
+export interface StakeCollectResponse {
+  wallet: string;
+  collectedAmount: number;
+  remainingAccruedYield: number;
+  settlementSource: StakeSettlementSource;
+  solanaSignature?: string;
+  explorerUrl?: string;
+}
+
+export interface StakeWithdrawResponse {
+  wallet: string;
+  withdrawnAmount: number;
+  remainingStakedAmount: number;
+  settlementSource: StakeSettlementSource;
+  solanaSignature?: string;
+  explorerUrl?: string;
+}
+
+export interface SimulateStakeTimelineEvent {
+  day: number;
+  type: "soft_decay_started" | "hard_reset_triggered";
+  description: string;
+}
+
+export interface SimulateStakeTimelinePoint {
+  day: number;
+  projectedAccruedYield: number;
+  baselineAccruedYield: number;
+  multiplier: number;
+}
+
+export interface SimulateStakeTimelineResponse {
+  horizonDays: number;
+  projectedAccruedYield: number;
+  baselineAccruedYield: number;
+  earningsDelta: number;
+  events: SimulateStakeTimelineEvent[];
+  points: SimulateStakeTimelinePoint[];
+}
+
 export interface SwapSuggestion {
   currentCategory: string;
   currentDescription: string;

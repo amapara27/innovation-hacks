@@ -16,6 +16,13 @@ import {
 import { clampGreenScore, getGreenScoreTier } from "../lib/blockchain.js";
 import { prisma } from "../lib/prisma.js";
 import { getNetAccruedYieldForUser } from "./behaviorIncentiveService.js";
+import {
+  computeEffectiveApyWithBase,
+  computeGreenBonus,
+} from "./stakingService.js";
+import { getProtocolBaseApy } from "./stakingRateService.js";
+import { getNetStakedPrincipalForUser } from "./stakePayoutService.js";
+import { buildRankedLeaderboardEntries } from "./leaderboardService.js";
 
 function inferTransactionSource(
   plaidAccessToken?: string,
@@ -298,12 +305,26 @@ async function getStoredGreenScore(wallet: string): Promise<GreenScoreResponse |
     return null;
   }
 
-  const totalUsers = await prisma.user.count({
+  const leaderboardUsers = (await prisma.user.findMany({
     where: { greenScore: { gt: 0 } },
-  });
-  const higherScores = await prisma.user.count({
-    where: { greenScore: { gt: clampGreenScore(user.greenScore ?? 0) } },
-  });
+    select: {
+      walletAddress: true,
+      greenScore: true,
+      totalCo2eOffset: true,
+    },
+  })) as Array<{
+    walletAddress: string;
+    greenScore: number;
+    totalCo2eOffset?: number | null;
+  }>;
+  const rankedEntries = buildRankedLeaderboardEntries(
+    leaderboardUsers.map((leaderboardUser) => ({
+      wallet: leaderboardUser.walletAddress,
+      score: clampGreenScore(leaderboardUser.greenScore),
+      totalCo2eOffset: leaderboardUser.totalCo2eOffset ?? 0,
+    }))
+  );
+  const placement = rankedEntries.find((entry) => entry.wallet === wallet);
 
   return {
     wallet,
@@ -315,8 +336,8 @@ async function getStoredGreenScore(wallet: string): Promise<GreenScoreResponse |
       carbonOffsets: user.breakdownCarbonOffsets ?? 0,
       communityImpact: user.breakdownCommunityImpact ?? 0,
     },
-    rank: totalUsers > 0 ? higherScores + 1 : undefined,
-    totalUsers: totalUsers || undefined,
+    rank: placement?.rank,
+    totalUsers: rankedEntries.length || undefined,
   };
 }
 
@@ -328,9 +349,6 @@ async function getStoredStakingInfo(
     select: {
       id: true,
       greenScore: true,
-      stakingBaseApy: true,
-      stakingGreenBonus: true,
-      stakingEffectiveApy: true,
       stakingStakedAmount: true,
       stakeVaultAddress: true,
     },
@@ -340,14 +358,26 @@ async function getStoredStakingInfo(
     return null;
   }
 
-  const accruedYield = await getNetAccruedYieldForUser(user.id);
+  const [accruedYield, stakedFromRecords] = await Promise.all([
+    getNetAccruedYieldForUser(user.id),
+    getNetStakedPrincipalForUser(user.id),
+  ]);
+  const stakedAmount =
+    stakedFromRecords === 0
+      ? Math.max(0, user.stakingStakedAmount ?? 0)
+      : stakedFromRecords;
+  const greenScore = clampGreenScore(user.greenScore ?? 0);
+  const baseApy = await getProtocolBaseApy();
+  const greenBonus = computeGreenBonus(greenScore);
+  const effectiveApy = computeEffectiveApyWithBase(greenScore, baseApy);
+
   return {
     wallet,
-    greenScore: clampGreenScore(user.greenScore ?? 0),
-    baseApy: user.stakingBaseApy ?? 0,
-    greenBonus: user.stakingGreenBonus ?? 0,
-    effectiveApy: user.stakingEffectiveApy ?? 0,
-    stakedAmount: user.stakingStakedAmount ?? 0,
+    greenScore,
+    baseApy: Number(baseApy.toFixed(4)),
+    greenBonus: Number(greenBonus.toFixed(4)),
+    effectiveApy: Number(effectiveApy.toFixed(4)),
+    stakedAmount,
     accruedYield,
     stakeVaultAddress: user.stakeVaultAddress ?? undefined,
   };

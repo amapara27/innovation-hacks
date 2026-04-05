@@ -130,7 +130,6 @@ async function getConfirmedYieldEstimate(userId: string): Promise<number> {
   const stakeAgg = await prisma.stakeRecord.aggregate({
     where: {
       userId,
-      solanaTxHash: { not: null },
       status: "confirmed",
     },
     _sum: { estimatedYield: true },

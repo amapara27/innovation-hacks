@@ -49,6 +49,7 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const latestRecommendations = walletState?.latestRecommendations ?? null;
 
   useEffect(() => {
     setAnalysisResult(walletState?.analysis ?? null);
@@ -84,6 +85,14 @@ export default function Dashboard() {
     stakingInfo && stakingInfo.baseApy > 0
       ? stakingInfo.effectiveApy / stakingInfo.baseApy
       : null;
+  const potentialMonthlyCostSavings = useMemo(
+    () =>
+      latestRecommendations?.suggestions.reduce(
+        (sum, suggestion) => sum + Math.max(0, -suggestion.priceDifferenceUsd),
+        0
+      ) ?? 0,
+    [latestRecommendations]
+  );
 
   const tickerStats = [
     {
@@ -467,44 +476,91 @@ export default function Dashboard() {
             </div>
           </div>
 
+          <div>
+            <CarbonFootprintChart />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Swap Potential Snapshot</CardTitle>
+              <CardDescription>
+                Latest saved product alternatives from your uploaded spending profile.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-stone-800/70 bg-surface-900/35 p-4">
+                <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">
+                  Potential CO₂ Reduction
+                </p>
+                <p className="mt-2 text-2xl font-display font-bold text-forest-300 tracking-tight">
+                  {latestRecommendations
+                    ? `${formatKg(latestRecommendations.totalPotentialSavingsMonthly)}/month`
+                    : "—"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {latestRecommendations
+                    ? `${latestRecommendations.suggestions.length} saved swap suggestions ready to review`
+                    : "Generate product swaps to surface savings here."}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-stone-800/70 bg-surface-900/35 p-4">
+                <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">
+                  Estimated Monthly Savings
+                </p>
+                <p className="mt-2 text-2xl font-display font-bold text-solar-400 tracking-tight">
+                  {latestRecommendations ? `$${potentialMonthlyCostSavings.toFixed(2)}` : "—"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Sum of the cheaper saved alternatives in your latest recommendation set.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
           {analysisResult && (
             <Card>
               <CardHeader>
                 <CardTitle>Uploaded Transactions</CardTitle>
+                <CardDescription>
+                  Scroll the ledger here without letting the upload view take over the whole dashboard.
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-stone-400 border-b border-stone-800">
-                        <th className="py-2 pr-3">Description</th>
-                        <th className="py-2 pr-3">Amount</th>
-                        <th className="py-2 pr-3">Category</th>
-                        <th className="py-2 pr-3">CO₂e (kg)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analysisResult.transactions.map((transaction) => (
-                        <tr
-                          key={transaction.transactionId}
-                          className="border-b border-stone-900 text-stone-300"
-                        >
-                          <td className="py-2 pr-3">{transaction.description}</td>
-                          <td className="py-2 pr-3">${transaction.amountUsd.toFixed(2)}</td>
-                          <td className="py-2 pr-3">{transaction.category}</td>
-                          <td className="py-2 pr-3">{formatKg(transaction.co2eGrams, 3)}</td>
+                <div className="rounded-xl border border-stone-800/70 bg-surface-950/50">
+                  <div className="grid grid-cols-2 gap-3 border-b border-stone-800/70 px-4 py-3 text-xs uppercase tracking-[0.2em] text-stone-500">
+                    <div>{analysisResult.transactionCount} transactions</div>
+                    <div className="text-right">{formatKg(analysisResult.totalCo2eGrams)} total</div>
+                  </div>
+                  <div className="max-h-[26rem] overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="sticky top-0 text-left text-stone-400 border-b border-stone-800 bg-surface-950/95 backdrop-blur">
+                          <th className="px-4 py-3 pr-3">Description</th>
+                          <th className="px-4 py-3 pr-3">Amount</th>
+                          <th className="px-4 py-3 pr-3">Category</th>
+                          <th className="px-4 py-3 pr-3">CO₂e (kg)</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {analysisResult.transactions.map((transaction) => (
+                          <tr
+                            key={transaction.transactionId}
+                            className="border-b border-stone-900 text-stone-300 hover:bg-surface-900/35"
+                          >
+                            <td className="px-4 py-3 pr-3">{transaction.description}</td>
+                            <td className="px-4 py-3 pr-3">${transaction.amountUsd.toFixed(2)}</td>
+                            <td className="px-4 py-3 pr-3">{transaction.category}</td>
+                            <td className="px-4 py-3 pr-3">{formatKg(transaction.co2eGrams, 3)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           )}
-
-          <div>
-            <CarbonFootprintChart />
-          </div>
         </>
       )}
     </div>

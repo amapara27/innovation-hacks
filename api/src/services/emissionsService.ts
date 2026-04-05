@@ -16,6 +16,7 @@ import {
   type RawTransaction,
 } from "../lib/aiRules.js";
 import { roundTo } from "../lib/aiMath.js";
+import { spendEmissionsProvider } from "./spendEmissionsProvider.js";
 import { transactionProvider } from "./transactionProviderService.js";
 
 function emptyCategoryTotals(): Record<EmissionCategoryValue, number> {
@@ -68,8 +69,12 @@ class EmissionsService {
 
     for (const rawTransaction of selected) {
       const category = this.classifyTransaction(rawTransaction);
-      const emissionFactor = EMISSION_FACTORS[category];
-      const co2eGrams = roundTo(rawTransaction.amountUsd * emissionFactor, 2);
+      const providerEstimate = await spendEmissionsProvider.estimate(rawTransaction);
+      const emissionFactor =
+        providerEstimate?.emissionFactor ?? EMISSION_FACTORS[category];
+      const co2eGrams =
+        providerEstimate?.co2eGrams ??
+        roundTo(rawTransaction.amountUsd * emissionFactor, 2);
 
       transactions.push({
         transactionId: rawTransaction.transactionId,

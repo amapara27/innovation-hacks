@@ -21,6 +21,7 @@ import { prisma } from "../lib/prisma.js";
 import { clampGreenScore } from "../lib/blockchain.js";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 import { getNetAccruedYieldForUser } from "../services/behaviorIncentiveService.js";
+import { getNetStakedPrincipalForUser } from "../services/stakePayoutService.js";
 
 export const stakingInfoRouter = Router();
 
@@ -53,15 +54,7 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
     const greenBonus = computeGreenBonus(greenScore);
     const effectiveApy = computeEffectiveApyWithBase(greenScore, baseApy);
 
-    // Report only executed demo stake transfers, not legacy simulation rows.
-    const stakeAgg = await prisma.stakeRecord.aggregate({
-      where: {
-        userId: user.id,
-        solanaTxHash: { not: null },
-        status: "confirmed",
-      },
-      _sum: { amount: true },
-    });
+    const stakedAmount = await getNetStakedPrincipalForUser(user.id);
     const accruedYield = await getNetAccruedYieldForUser(user.id);
 
     const response = StakingInfoResponseSchema.parse({
@@ -70,7 +63,7 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
       baseApy: parseFloat(baseApy.toFixed(4)),
       greenBonus: parseFloat(greenBonus.toFixed(4)),
       effectiveApy: parseFloat(effectiveApy.toFixed(4)),
-      stakedAmount: stakeAgg._sum.amount ?? 0,
+      stakedAmount,
       accruedYield: parseFloat(accruedYield.toFixed(6)),
       stakeVaultAddress: safeStakeVaultAddress(),
     });

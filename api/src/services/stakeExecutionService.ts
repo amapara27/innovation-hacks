@@ -27,6 +27,7 @@ import {
   getApiPayer,
   getSolanaConnection,
 } from "./solanaService.js";
+import { getNetAccruedYieldForUser } from "./behaviorIncentiveService.js";
 
 type StakingProvider = "marinade" | "jito" | "demo";
 
@@ -211,6 +212,12 @@ function isFallbackToDemoEnabled(): boolean {
     ?.trim()
     .toLowerCase();
 
+  if (!value) {
+    // Keep protocol behavior strict by default so Marinade failures surface
+    // instead of silently switching to demo transfers.
+    return false;
+  }
+
   return value !== "0" && value !== "false" && value !== "no";
 }
 
@@ -394,6 +401,16 @@ export async function executeDemoStake(
     },
   });
 
+  const stakeAgg = await prisma.stakeRecord.aggregate({
+    where: {
+      userId: user.id,
+      status: "confirmed",
+    },
+    _sum: { amount: true },
+  });
+  const netStakedAmount = Math.max(0, stakeAgg._sum.amount ?? 0);
+  const netAccruedYield = await getNetAccruedYieldForUser(user.id);
+
   await prisma.user.update({
     where: { id: user.id },
     data: {
@@ -402,8 +419,8 @@ export async function executeDemoStake(
         computeGreenBonus(greenScoreResponse.score).toFixed(4)
       ),
       stakingEffectiveApy: parseFloat(simulation.effectiveApy.toFixed(4)),
-      stakingStakedAmount: request.amount,
-      stakingAccruedYield: simulation.estimatedYield,
+      stakingStakedAmount: parseFloat(netStakedAmount.toFixed(6)),
+      stakingAccruedYield: parseFloat(netAccruedYield.toFixed(6)),
       stakeVaultAddress: destinationAddress,
       stakingUpdatedAt: new Date(),
     },

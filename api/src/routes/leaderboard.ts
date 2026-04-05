@@ -14,50 +14,12 @@ import {
 } from "@carboniq/contracts";
 import {
   clampGreenScore,
-  getGreenScoreTier,
-  shortenWallet,
 } from "../lib/blockchain.js";
 import { prisma } from "../lib/prisma.js";
+import { buildRankedLeaderboardEntries } from "../services/leaderboardService.js";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 
 export const leaderboardRouter = Router();
-const MIN_LEADERBOARD_ENTRIES = 25;
-const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-interface LeaderboardEntry {
-  rank: number;
-  wallet: string;
-  walletShort: string;
-  score: number;
-  tier: ReturnType<typeof getGreenScoreTier>;
-  totalCo2eOffset: number;
-}
-
-function createSyntheticWallet(index: number): string {
-  let value = index * 7_919 + 17;
-  let wallet = "";
-
-  for (let charIndex = 0; charIndex < 44; charIndex += 1) {
-    value = (value * 48_271 + 12_345) % 2_147_483_647;
-    wallet += BASE58_ALPHABET[value % BASE58_ALPHABET.length];
-  }
-
-  return wallet;
-}
-
-function createSyntheticEntry(index: number): Omit<LeaderboardEntry, "rank"> {
-  const score = clampGreenScore(Math.round(91 - index * 1.35 - (index % 3)));
-  const totalCo2eOffset = 18_000 + index * 1_650 + (index % 5) * 275;
-  const wallet = createSyntheticWallet(index);
-
-  return {
-    wallet,
-    walletShort: shortenWallet(wallet),
-    score,
-    tier: getGreenScoreTier(score),
-    totalCo2eOffset,
-  };
-}
 
 leaderboardRouter.get("/", async (req: Request, res: Response) => {
   try {
@@ -91,29 +53,11 @@ leaderboardRouter.get("/", async (req: Request, res: Response) => {
 
       return {
         wallet: user.walletAddress,
-        walletShort: shortenWallet(user.walletAddress),
         score: clampGreenScore(user.greenScore),
-        tier: getGreenScoreTier(user.greenScore),
         totalCo2eOffset,
       };
     });
-
-    const syntheticCount = Math.max(MIN_LEADERBOARD_ENTRIES - realEntries.length, 0);
-    const syntheticEntries = Array.from({ length: syntheticCount }, (_, index) =>
-      createSyntheticEntry(index)
-    );
-
-    const rankedEntries = [...realEntries, ...syntheticEntries]
-      .sort(
-        (left, right) =>
-          right.score - left.score ||
-          right.totalCo2eOffset - left.totalCo2eOffset ||
-          left.wallet.localeCompare(right.wallet)
-      )
-      .map((entry, index) => ({
-        ...entry,
-        rank: index + 1,
-      }));
+    const rankedEntries = buildRankedLeaderboardEntries(realEntries);
 
     const entries = rankedEntries.slice(skip, skip + pageSize);
     const totalEntries = rankedEntries.length;

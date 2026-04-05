@@ -37,7 +37,12 @@ type GreenScoreRouteModule = typeof import("../src/routes/greenScore.js");
 type SwapSuggestionsRouteModule = typeof import("../src/routes/swapSuggestions.js");
 type TriggerOffsetRouteModule = typeof import("../src/routes/triggerOffset.js");
 type SimulateStakeRouteModule = typeof import("../src/routes/simulateStake.js");
+type SimulateStakeTimelineRouteModule = typeof import(
+  "../src/routes/simulateStakeTimeline.js"
+);
 type StakeRouteModule = typeof import("../src/routes/stake.js");
+type StakeCollectRouteModule = typeof import("../src/routes/stakeCollect.js");
+type StakeWithdrawRouteModule = typeof import("../src/routes/stakeWithdraw.js");
 type StakingInfoRouteModule = typeof import("../src/routes/stakingInfo.js");
 type LeaderboardRouteModule = typeof import("../src/routes/leaderboard.js");
 type WalletStateRouteModule = typeof import("../src/routes/walletState.js");
@@ -53,7 +58,10 @@ let greenScoreRouteModule: GreenScoreRouteModule;
 let swapSuggestionsRouteModule: SwapSuggestionsRouteModule;
 let triggerOffsetRouteModule: TriggerOffsetRouteModule;
 let simulateStakeRouteModule: SimulateStakeRouteModule;
+let simulateStakeTimelineRouteModule: SimulateStakeTimelineRouteModule;
 let stakeRouteModule: StakeRouteModule;
+let stakeCollectRouteModule: StakeCollectRouteModule;
+let stakeWithdrawRouteModule: StakeWithdrawRouteModule;
 let stakingInfoRouteModule: StakingInfoRouteModule;
 let leaderboardRouteModule: LeaderboardRouteModule;
 let walletStateRouteModule: WalletStateRouteModule;
@@ -163,7 +171,12 @@ before(async () => {
   swapSuggestionsRouteModule = await import("../src/routes/swapSuggestions.js");
   triggerOffsetRouteModule = await import("../src/routes/triggerOffset.js");
   simulateStakeRouteModule = await import("../src/routes/simulateStake.js");
+  simulateStakeTimelineRouteModule = await import(
+    "../src/routes/simulateStakeTimeline.js"
+  );
   stakeRouteModule = await import("../src/routes/stake.js");
+  stakeCollectRouteModule = await import("../src/routes/stakeCollect.js");
+  stakeWithdrawRouteModule = await import("../src/routes/stakeWithdraw.js");
   stakingInfoRouteModule = await import("../src/routes/stakingInfo.js");
   leaderboardRouteModule = await import("../src/routes/leaderboard.js");
   walletStateRouteModule = await import("../src/routes/walletState.js");
@@ -723,6 +736,259 @@ describe("unified backend routes", () => {
     assert.equal(user.stakes[0]?.vaultAddress, vaultAddress.toBase58());
   });
 
+  it("POST /api/stake/collect succeeds with vault settlement and records a negative yield adjustment", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 78,
+        stakingEffectiveApy: 7.2,
+      },
+    });
+
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 6,
+        durationDays: 45,
+        greenScore: 78,
+        effectiveApy: 7.2,
+        estimatedYield: 1.25,
+        solanaTxHash: "stake-base-collect-1",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const router = stakeCollectRouteModule.createStakeCollectRouter({
+      settlePayout: async () => ({
+        settlementSource: "vault_onchain",
+        solanaSignature: "collect-vault-sig-1",
+        explorerUrl:
+          "https://explorer.solana.com/tx/collect-vault-sig-1?cluster=devnet",
+        sourceAddress: randomWallet(),
+      }),
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: { wallet },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.settlementSource, "vault_onchain");
+    assert.equal(response.body.solanaSignature, "collect-vault-sig-1");
+    assert.equal(response.body.collectedAmount, 1.25);
+    assert.equal(response.body.remainingAccruedYield, 0);
+
+    const refreshed = await prismaModule.prisma.user.findUniqueOrThrow({
+      where: { walletAddress: wallet },
+      include: { stakes: true },
+    });
+    assert.equal(refreshed.stakes.length, 2);
+    const collectAdjustment = refreshed.stakes.find((row) =>
+      row.provider.startsWith("collect_")
+    );
+    assert.equal(collectAdjustment?.provider, "collect_vault_onchain");
+    assert.equal(collectAdjustment?.estimatedYield, -1.25);
+    assert.equal(collectAdjustment?.amount, 0);
+  });
+
+  it("POST /api/stake/collect falls back to API payer settlement when vault path fails", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 66,
+        stakingEffectiveApy: 6.9,
+      },
+    });
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 4,
+        durationDays: 30,
+        greenScore: 66,
+        effectiveApy: 6.9,
+        estimatedYield: 0.4,
+        solanaTxHash: "stake-base-collect-2",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const fallbackTrace: string[] = [];
+    const router = stakeCollectRouteModule.createStakeCollectRouter({
+      settlePayout: async () => {
+        fallbackTrace.push("vault_failed");
+        fallbackTrace.push("api_payer_success");
+        return {
+          settlementSource: "api_payer_onchain",
+          solanaSignature: "collect-api-sig-2",
+          explorerUrl:
+            "https://explorer.solana.com/tx/collect-api-sig-2?cluster=devnet",
+          sourceAddress: randomWallet(),
+        };
+      },
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: { wallet },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.settlementSource, "api_payer_onchain");
+    assert.equal(response.body.solanaSignature, "collect-api-sig-2");
+    assert.deepEqual(fallbackTrace, ["vault_failed", "api_payer_success"]);
+  });
+
+  it("POST /api/stake/collect falls back to demo accounting when on-chain settlement paths fail", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 54,
+        stakingEffectiveApy: 6.7,
+      },
+    });
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 5,
+        durationDays: 30,
+        greenScore: 54,
+        effectiveApy: 6.7,
+        estimatedYield: 0.35,
+        solanaTxHash: "stake-base-collect-3",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const router = stakeCollectRouteModule.createStakeCollectRouter({
+      settlePayout: async () => ({
+        settlementSource: "demo_accounting",
+      }),
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: { wallet },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.settlementSource, "demo_accounting");
+    assert.equal(response.body.solanaSignature, undefined);
+    assert.equal(response.body.remainingAccruedYield, 0);
+  });
+
+  it("POST /api/stake/withdraw rejects over-withdraw and updates remaining principal", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 72,
+        stakingEffectiveApy: 7.1,
+      },
+    });
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 3,
+        durationDays: 45,
+        greenScore: 72,
+        effectiveApy: 7.1,
+        estimatedYield: 0.2,
+        solanaTxHash: "stake-base-withdraw-1",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const router = stakeWithdrawRouteModule.createStakeWithdrawRouter({
+      settlePayout: async () => ({
+        settlementSource: "demo_accounting",
+      }),
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const tooLarge = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: {
+        wallet,
+        amount: 4,
+      },
+    });
+    assert.equal(tooLarge.status, 422);
+
+    const ok = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: {
+        wallet,
+        amount: 1.25,
+      },
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.withdrawnAmount, 1.25);
+    assert.equal(ok.body.remainingStakedAmount, 1.75);
+
+    const refreshed = await prismaModule.prisma.user.findUniqueOrThrow({
+      where: { walletAddress: wallet },
+      include: { stakes: true },
+    });
+    const withdrawAdjustment = refreshed.stakes.find((row) =>
+      row.provider.startsWith("withdraw_")
+    );
+    assert.equal(withdrawAdjustment?.amount, -1.25);
+    assert.equal(withdrawAdjustment?.estimatedYield, 0);
+  });
+
+  it("POST /api/simulate-stake-timeline emits soft decay and hard reset events for sustained low scores", async () => {
+    const response = await requestJson(
+      simulateStakeTimelineRouteModule.simulateStakeTimelineRouter,
+      {
+        method: "POST",
+        path: "/",
+        body: {
+          principal: 10,
+          currentAccruedYield: 0.5,
+          greenScore: 20,
+          horizonDays: 20,
+        },
+      }
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.horizonDays, 20);
+    assert.ok(response.body.projectedAccruedYield <= response.body.baselineAccruedYield);
+    assert.ok(response.body.earningsDelta <= 0);
+    assert.deepEqual(
+      response.body.events.map((event: { type: string }) => event.type),
+      ["soft_decay_started", "hard_reset_triggered"]
+    );
+    const day14 = response.body.points.find(
+      (point: { day: number }) => point.day === 14
+    );
+    assert.equal(day14?.projectedAccruedYield, 0);
+  });
+
   it("GET /api/staking-info creates a new user and aggregates only executed stake data", async () => {
     const wallet = randomWallet();
     let response = await requestJson(stakingInfoRouteModule.stakingInfoRouter, {
@@ -784,6 +1050,65 @@ describe("unified backend routes", () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.stakedAmount, 15);
     assert.equal(response.body.accruedYield, 0.74);
+  });
+
+  it("GET /api/staking-info reflects collect and withdraw adjustments in principal and accrued yield", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 63,
+      },
+    });
+
+    await prismaModule.prisma.stakeRecord.createMany({
+      data: [
+        {
+          userId: user.id,
+          walletAddress: wallet,
+          amount: 5,
+          durationDays: 30,
+          greenScore: 63,
+          effectiveApy: 6.8,
+          estimatedYield: 1.0,
+          solanaTxHash: "stake-adjust-base-1",
+          vaultAddress: randomWallet(),
+          status: "confirmed",
+          provider: "demo",
+        },
+        {
+          userId: user.id,
+          walletAddress: wallet,
+          amount: 0,
+          durationDays: 0,
+          greenScore: 63,
+          effectiveApy: 6.8,
+          estimatedYield: -0.4,
+          status: "confirmed",
+          provider: "collect_demo_accounting",
+        },
+        {
+          userId: user.id,
+          walletAddress: wallet,
+          amount: -1.5,
+          durationDays: 0,
+          greenScore: 63,
+          effectiveApy: 6.8,
+          estimatedYield: 0,
+          status: "confirmed",
+          provider: "withdraw_demo_accounting",
+        },
+      ],
+    });
+
+    const response = await requestJson(stakingInfoRouteModule.stakingInfoRouter, {
+      method: "GET",
+      path: `/?wallet=${wallet}`,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.stakedAmount, 3.5);
+    assert.equal(response.body.accruedYield, 0.6);
   });
 
   it("GET /api/leaderboard paginates and sorts by score descending", async () => {

@@ -13,6 +13,7 @@ import {
 import { clampNumber, roundTo } from "../lib/aiMath.js";
 import { prisma } from "../lib/prisma.js";
 import { emissionsService } from "./emissionsService.js";
+import { buildRankedLeaderboardEntries } from "./leaderboardService.js";
 import {
   applyBehaviorPenalty,
   enforceLowScoreYieldReset,
@@ -163,19 +164,33 @@ export async function refreshStoredGreenScore(
     score,
   });
 
-  const totalUsers = await prisma.user.count({
+  const leaderboardUsers = (await prisma.user.findMany({
     where: { greenScore: { gt: 0 } },
-  });
-  const higherScores = await prisma.user.count({
-    where: { greenScore: { gt: score } },
-  });
+    select: {
+      walletAddress: true,
+      greenScore: true,
+      totalCo2eOffset: true,
+    },
+  })) as Array<{
+    walletAddress: string;
+    greenScore: number;
+    totalCo2eOffset?: number | null;
+  }>;
+  const rankedEntries = buildRankedLeaderboardEntries(
+    leaderboardUsers.map((leaderboardUser) => ({
+      wallet: leaderboardUser.walletAddress,
+      score: clampGreenScore(leaderboardUser.greenScore),
+      totalCo2eOffset: leaderboardUser.totalCo2eOffset ?? 0,
+    }))
+  );
+  const placement = rankedEntries.find((entry) => entry.wallet === wallet);
 
   return {
     wallet,
     score,
     tier,
     breakdown,
-    rank: totalUsers > 0 ? higherScores + 1 : undefined,
-    totalUsers: totalUsers || undefined,
+    rank: placement?.rank,
+    totalUsers: rankedEntries.length || undefined,
   };
 }
