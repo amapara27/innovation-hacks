@@ -13,7 +13,6 @@ const MIN_WINDOW_DAYS = 1;
 const MARINADE_WEB_FALLBACK_APY = 6.1;
 
 let cachedBaseApy: { value: number; expiresAt: number } | null = null;
-let snapshotSchemaEnsured = false;
 
 type RateSnapshotRow = {
   value: number;
@@ -58,47 +57,25 @@ async function fetchCurrentMarinadeMsolPrice(): Promise<number> {
 }
 
 async function insertSnapshot(value: number): Promise<void> {
-  await ensureSnapshotSchema();
-  await prisma.$executeRaw`
-    INSERT INTO "ProtocolRateSnapshot" ("provider", "metric", "value")
-    VALUES (${PROTOCOL}, ${METRIC}, ${value})
-  `;
+  await prisma.protocolRateSnapshot.create({
+    data: {
+      provider: PROTOCOL,
+      metric: METRIC,
+      value,
+    },
+  });
 }
 
 async function getPreviousSnapshot(cutoff: Date): Promise<RateSnapshotRow | null> {
-  await ensureSnapshotSchema();
-  const rows = await prisma.$queryRaw<RateSnapshotRow[]>`
-    SELECT "value", "capturedAt"
-    FROM "ProtocolRateSnapshot"
-    WHERE "provider" = ${PROTOCOL}
-      AND "metric" = ${METRIC}
-      AND "capturedAt" <= ${cutoff}
-    ORDER BY "capturedAt" DESC
-    LIMIT 1
-  `;
-
-  return rows[0] ?? null;
-}
-
-async function ensureSnapshotSchema(): Promise<void> {
-  if (snapshotSchemaEnsured) {
-    return;
-  }
-
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "ProtocolRateSnapshot" (
-      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-      "provider" TEXT NOT NULL,
-      "metric" TEXT NOT NULL,
-      "value" REAL NOT NULL,
-      "capturedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "ProtocolRateSnapshot_provider_metric_capturedAt_idx"
-    ON "ProtocolRateSnapshot"("provider", "metric", "capturedAt")
-  `);
-  snapshotSchemaEnsured = true;
+  return prisma.protocolRateSnapshot.findFirst({
+    where: {
+      provider: PROTOCOL,
+      metric: METRIC,
+      capturedAt: { lte: cutoff },
+    },
+    orderBy: { capturedAt: "desc" },
+    select: { value: true, capturedAt: true },
+  });
 }
 
 function computeAnnualizedApy({

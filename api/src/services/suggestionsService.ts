@@ -269,9 +269,12 @@ class SuggestionsService {
     return narration;
   }
 
-  async getSwapSuggestions(
-    request: SwapSuggestionsRequest
-  ): Promise<SwapSuggestionsResponse> {
+  async getSwapSuggestions(request: SwapSuggestionsRequest): Promise<{
+    response: SwapSuggestionsResponse;
+    narratorProvider: string;
+    model?: string;
+    promptHash?: string;
+  }> {
     const snapshot = emissionsService.getCanonicalSnapshot(request.wallet);
     const rankedCategories = this.rankCategories(
       snapshot.categoryEmissionTotals,
@@ -280,6 +283,21 @@ class SuggestionsService {
 
     const suggestions: SwapSuggestion[] = [];
     let totalPotentialSavingsMonthly = 0;
+    const narratorProvider = this.openAiNarrator.isConfigured()
+      ? "openai"
+      : "template";
+    const model = this.openAiNarrator.isConfigured()
+      ? process.env.CARBONIQ_OPENAI_MODEL || "gpt-5-mini"
+      : undefined;
+    const promptHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          wallet: request.wallet,
+          categories: request.categories ?? [],
+          categoryTotals: snapshot.categoryEmissionTotals,
+        })
+      )
+      .digest("hex");
 
     for (const category of rankedCategories) {
       const rule = SUGGESTION_RULES[category];
@@ -320,9 +338,14 @@ class SuggestionsService {
     }
 
     return {
-      wallet: request.wallet,
-      suggestions,
-      totalPotentialSavingsMonthly,
+      response: {
+        wallet: request.wallet,
+        suggestions,
+        totalPotentialSavingsMonthly,
+      },
+      narratorProvider,
+      model,
+      promptHash,
     };
   }
 }

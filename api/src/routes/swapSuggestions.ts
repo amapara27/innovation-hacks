@@ -5,6 +5,7 @@ import {
 } from "@carboniq/contracts";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 import { suggestionsService } from "../services/suggestionsService.js";
+import { persistRecommendationRun } from "../services/walletDataService.js";
 
 function normalizeCategories(raw: unknown): string[] | undefined {
   if (raw === undefined) {
@@ -29,9 +30,15 @@ swapSuggestionsRouter.get("/", async (req: Request, res: Response) => {
       categories: normalizeCategories(req.query.categories),
     });
 
-    const response = SwapSuggestionsResponseSchema.parse(
-      await suggestionsService.getSwapSuggestions(request)
-    );
+    const result = await suggestionsService.getSwapSuggestions(request);
+    const response = SwapSuggestionsResponseSchema.parse(result.response);
+    await persistRecommendationRun({
+      request,
+      response,
+      narratorProvider: result.narratorProvider,
+      model: result.model,
+      promptHash: result.promptHash,
+    });
     res.json(response);
   } catch (err) {
     if (isZodLikeError(err)) {

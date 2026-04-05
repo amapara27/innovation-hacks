@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "MongoDB": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mongodb-mcp-server"
+      ],
+      "env": {
+        "MDB_MCP_CONNECTION_STRING": "mongodb+srv://ibbs:1234@cluster0.tmclf7d.mongodb.net/carboniq?retryWrites=true&w=majority&appName=Cluster0"
+      }
+    }
+  }
+}

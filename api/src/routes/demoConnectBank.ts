@@ -2,10 +2,12 @@ import { Router, type Request, type Response } from "express";
 import {
   DemoConnectBankRequestSchema,
   DemoConnectBankResponseSchema,
+  DEFAULT_TRANSACTION_LIMIT,
 } from "@carboniq/contracts";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 import { demoBankLedgerService } from "../services/demoBankLedgerService.js";
 import { emissionsService } from "../services/emissionsService.js";
+import { persistAnalyzedTransactions } from "../services/walletDataService.js";
 
 export const demoConnectBankRouter = Router();
 
@@ -19,6 +21,16 @@ demoConnectBankRouter.post("/", async (req: Request, res: Response) => {
         : demoBankLedgerService.connectUpload(request.wallet, request.transactions!);
 
     emissionsService.clearWalletCache(request.wallet);
+    const analysis = emissionsService.analyzeTransactions({
+      wallet: request.wallet,
+      limit: DEFAULT_TRANSACTION_LIMIT,
+    });
+    await persistAnalyzedTransactions({
+      wallet: request.wallet,
+      response: analysis,
+      sourceLabel:
+        request.mode === "preset" ? `preset:${request.scenario}` : "upload",
+    });
 
     const response = DemoConnectBankResponseSchema.parse({
       wallet: request.wallet,

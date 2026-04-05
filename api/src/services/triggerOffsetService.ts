@@ -33,8 +33,8 @@ export async function getTriggerOffsetDecision(
   const snapshot = emissionsService.getCanonicalSnapshot(request.wallet);
   const confirmedOffsets = await prisma.impactRecord.aggregate({
     where: {
+      walletAddress: request.wallet,
       status: OffsetStatus.RECORDED_ON_CHAIN,
-      user: { walletAddress: request.wallet },
     },
     _sum: { co2OffsetGrams: true },
   });
@@ -104,18 +104,31 @@ export async function getTriggerOffsetDecision(
 
 export async function triggerOffsetAndRecord(
   request: TriggerOffsetRequest,
-  processRecordOffset: (input: {
-    wallet: string;
-    co2eGrams: number;
-    creditType: OffsetDecision["creditType"];
-    toucanTxHash?: string;
-  }) => Promise<{ status: string; toucanTxHash: string }>
+  processRecordOffset: (
+    input: {
+      wallet: string;
+      co2eGrams: number;
+      creditType: OffsetDecision["creditType"];
+      toucanTxHash?: string;
+    },
+    decisionContext?: {
+      budgetUsd?: number;
+      pricePerTonneUsd?: number;
+      projectName?: string;
+      verificationStandard?: string;
+    }
+  ) => Promise<{ status: string; toucanTxHash: string }>
 ): Promise<TriggerOffsetResponse> {
   const decision = await getTriggerOffsetDecision(request);
   const recorded = await processRecordOffset({
     wallet: request.wallet,
     co2eGrams: decision.co2eGrams,
     creditType: decision.creditType,
+  }, {
+    budgetUsd: request.budgetUsd,
+    pricePerTonneUsd: decision.pricePerTonneUsd,
+    projectName: decision.projectName,
+    verificationStandard: decision.verificationStandard,
   });
 
   return {

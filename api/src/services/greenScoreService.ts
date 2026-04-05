@@ -32,8 +32,8 @@ export async function refreshStoredGreenScore(
   const snapshot = emissionsService.getCanonicalSnapshot(wallet);
   const confirmedOffsets = await prisma.impactRecord.findMany({
     where: {
+      walletAddress: wallet,
       status: OffsetStatus.RECORDED_ON_CHAIN,
-      user: { walletAddress: wallet },
     },
     select: {
       co2OffsetGrams: true,
@@ -92,13 +92,32 @@ export async function refreshStoredGreenScore(
   };
 
   const score = clampGreenScore(computeWeightedScore(breakdown));
+  const tier = getGreenScoreTier(score);
 
   await prisma.user.upsert({
     where: { walletAddress: wallet },
-    update: { greenScore: score },
+    update: {
+      greenScore: score,
+      greenScoreCurrent: score,
+      greenTierCurrent: tier,
+      breakdownTransactionEfficiency: breakdown.transactionEfficiency,
+      breakdownSpendingHabits: breakdown.spendingHabits,
+      breakdownCarbonOffsets: breakdown.carbonOffsets,
+      breakdownCommunityImpact: breakdown.communityImpact,
+      totalCo2eOffset: confirmedOffsetGrams,
+      offsetCount,
+    },
     create: {
       walletAddress: wallet,
       greenScore: score,
+      greenScoreCurrent: score,
+      greenTierCurrent: tier,
+      breakdownTransactionEfficiency: breakdown.transactionEfficiency,
+      breakdownSpendingHabits: breakdown.spendingHabits,
+      breakdownCarbonOffsets: breakdown.carbonOffsets,
+      breakdownCommunityImpact: breakdown.communityImpact,
+      totalCo2eOffset: confirmedOffsetGrams,
+      offsetCount,
     },
   });
 
@@ -112,7 +131,7 @@ export async function refreshStoredGreenScore(
   return {
     wallet,
     score,
-    tier: getGreenScoreTier(score),
+    tier,
     breakdown,
     rank: totalUsers > 0 ? higherScores + 1 : undefined,
     totalUsers: totalUsers || undefined,

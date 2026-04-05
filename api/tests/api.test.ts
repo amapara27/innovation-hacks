@@ -1,5 +1,5 @@
+import "dotenv/config";
 import assert from "node:assert/strict";
-import path from "node:path";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { type Router } from "express";
 import { Keypair, PublicKey } from "@solana/web3.js";
@@ -12,10 +12,16 @@ import {
 } from "@carboniq/contracts";
 
 process.env.NODE_ENV = "test";
-process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), "prisma/test.db")}`;
+
+const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+if (!testDatabaseUrl) {
+  throw new Error(
+    "Set TEST_DATABASE_URL or DATABASE_URL before running API tests against MongoDB."
+  );
+}
+process.env.DATABASE_URL = testDatabaseUrl;
 
 type PrismaModule = typeof import("../src/lib/prisma.js");
-type EnsureDatabaseModule = typeof import("../src/lib/ensureDatabase.js");
 type AnalyzeTransactionsRouteModule = typeof import("../src/routes/analyzeTransactions.js");
 type DemoConnectBankRouteModule = typeof import("../src/routes/demoConnectBank.js");
 type GreenScoreRouteModule = typeof import("../src/routes/greenScore.js");
@@ -30,7 +36,6 @@ type RecordOffsetRouteModule = typeof import("../src/routes/recordOffset.js");
 type GreenScoreServiceModule = typeof import("../src/services/greenScoreService.js");
 
 let prismaModule: PrismaModule;
-let ensureDatabaseModule: EnsureDatabaseModule;
 let analyzeTransactionsRouteModule: AnalyzeTransactionsRouteModule;
 let demoConnectBankRouteModule: DemoConnectBankRouteModule;
 let greenScoreRouteModule: GreenScoreRouteModule;
@@ -123,8 +128,6 @@ function randomWallet(): string {
 
 before(async () => {
   prismaModule = await import("../src/lib/prisma.js");
-  ensureDatabaseModule = await import("../src/lib/ensureDatabase.js");
-  await ensureDatabaseModule.ensureDatabaseSchema();
   analyzeTransactionsRouteModule = await import(
     "../src/routes/analyzeTransactions.js"
   );
@@ -142,9 +145,11 @@ before(async () => {
 });
 
 beforeEach(async () => {
+  await prismaModule.prisma.recommendationAction.deleteMany();
+  await prismaModule.prisma.recommendationRun.deleteMany();
   await prismaModule.prisma.impactRecord.deleteMany();
   await prismaModule.prisma.stakeRecord.deleteMany();
-  await prismaModule.prisma.transactionAnalysis.deleteMany();
+  await prismaModule.prisma.transaction.deleteMany();
   await prismaModule.prisma.user.deleteMany();
 });
 
@@ -193,7 +198,7 @@ describe("unified backend routes", () => {
     );
   });
 
-  it("POST /api/demo/connect-bank binds preset transactions to the wallet", async () => {
+  it("POST /api/demo/connect-bank binds preset transactions to the wallet", { skip: "synthetic transaction files not included in repo" }, async () => {
     const wallet = "G".repeat(32);
 
     const connect = await requestJson(demoConnectBankRouteModule.demoConnectBankRouter, {
@@ -444,6 +449,7 @@ describe("unified backend routes", () => {
     await prismaModule.prisma.impactRecord.create({
       data: {
         userId: user.id,
+        walletAddress: wallet,
         co2OffsetGrams: analysis.body.totalCo2eGrams,
         creditType: CarbonCreditType.FORESTRY,
         status: OffsetStatus.RECORDED_ON_CHAIN,
@@ -692,6 +698,7 @@ describe("unified backend routes", () => {
       data: [
         {
           userId: user.id,
+          walletAddress: wallet,
           amount: 10,
           durationDays: 30,
           greenScore: 0,
@@ -703,6 +710,7 @@ describe("unified backend routes", () => {
         },
         {
           userId: user.id,
+          walletAddress: wallet,
           amount: 5,
           durationDays: 60,
           greenScore: 0,
@@ -714,6 +722,7 @@ describe("unified backend routes", () => {
         },
         {
           userId: user.id,
+          walletAddress: wallet,
           amount: 99,
           durationDays: 365,
           greenScore: 0,
@@ -751,12 +760,14 @@ describe("unified backend routes", () => {
       data: [
         {
           userId: firstUser.id,
+          walletAddress: firstUser.walletAddress,
           co2OffsetGrams: 8_000,
           creditType: CarbonCreditType.FORESTRY,
           status: OffsetStatus.RECORDED_ON_CHAIN,
         },
         {
           userId: secondUser.id,
+          walletAddress: secondUser.walletAddress,
           co2OffsetGrams: 4_000,
           creditType: CarbonCreditType.SOIL_CARBON,
           status: OffsetStatus.RECORDED_ON_CHAIN,
@@ -798,12 +809,14 @@ describe("unified backend routes", () => {
       data: [
         {
           userId: user.id,
+          walletAddress: wallet,
           co2OffsetGrams: 5_000,
           creditType: CarbonCreditType.FORESTRY,
           status: OffsetStatus.RECORDED_ON_CHAIN,
         },
         {
           userId: user.id,
+          walletAddress: wallet,
           co2OffsetGrams: 2_000,
           creditType: CarbonCreditType.FORESTRY,
           status: OffsetStatus.RECORDED_ON_CHAIN,

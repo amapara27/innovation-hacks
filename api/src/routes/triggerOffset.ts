@@ -27,7 +27,9 @@ export function createTriggerOffsetRouter(
     try {
       const request = TriggerOffsetRequestSchema.parse(req.body);
       const response = TriggerOffsetResponseSchema.parse(
-        await triggerOffsetAndRecord(request, deps.processRecordOffset)
+        await triggerOffsetAndRecord(request, (input, decisionContext) =>
+          deps.processRecordOffset(input, undefined, decisionContext)
+        )
       );
       res.json(response);
     } catch (err) {

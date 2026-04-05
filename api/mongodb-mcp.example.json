@@ -1,0 +1,18 @@
+{
+  "mcp": {
+    "servers": {
+      "MongoDB": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "mongodb-mcp-server",
+          "--readOnly"
+        ],
+        "env": {
+          "MDB_MCP_CONNECTION_STRING": "mongodb+srv://USERNAME:PASSWORD@CLUSTER_URL/carboniq?retryWrites=true&w=majority&appName=CarbonIQ"
+        }
+      }
+    }
+  }
+}

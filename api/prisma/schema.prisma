@@ -6,60 +6,143 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id            String   @id @default(cuid())
-  walletAddress String   @unique
-  greenScore    Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                         String   @id @default(auto()) @map("_id") @db.ObjectId
+  walletAddress              String   @unique
+  greenScore                 Int      @default(0)
+  greenScoreCurrent          Int      @default(0)
+  greenTierCurrent           String   @default("seedling")
+  breakdownTransactionEfficiency Float @default(0)
+  breakdownSpendingHabits    Float    @default(0)
+  breakdownCarbonOffsets     Float    @default(0)
+  breakdownCommunityImpact   Float    @default(0)
+  stakingBaseApy             Float    @default(0)
+  stakingGreenBonus          Float    @default(0)
+  stakingEffectiveApy        Float    @default(0)
+  stakingStakedAmount        Float    @default(0)
+  stakingAccruedYield        Float    @default(0)
+  stakeVaultAddress          String?
+  stakingUpdatedAt           DateTime?
+  totalCo2eOffset            Int      @default(0)
+  offsetCount                Int      @default(0)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
-  transactions TransactionAnalysis[]
-  impacts      ImpactRecord[]
-  stakes       StakeRecord[]
+  transactions       Transaction[]
+  impacts            ImpactRecord[]
+  stakes             StakeRecord[]
+  recommendationRuns RecommendationRun[]
+  recommendationActions RecommendationAction[]
 }
 
-model TransactionAnalysis {
-  id               String   @id @default(cuid())
-  signature        String   @unique
-  userId           String
-  computeUnits     Int
-  estimatedCO2     Float
-  transactionType  String
-  analyzedAt       DateTime @default(now())
+model Transaction {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String   @db.ObjectId
+  walletAddress  String
+  transactionId  String
+  description    String
+  amountUsd      Float
+  mccCode        String?
+  date           DateTime
+  category       String
+  emissionFactor Float
+  co2eGrams      Float
+  source         String
+  sourceLabel    String?
+  analyzedAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@unique([walletAddress, transactionId])
+  @@index([walletAddress, date(sort: Desc)])
+  @@index([walletAddress, category, date(sort: Desc)])
 }
 
 model ImpactRecord {
-  id              String   @id @default(cuid())
-  userId          String
-  co2OffsetGrams  Int
-  creditType      String   @default("forestry")
-  toucanTxHash    String?
-  onChainTxHash   String?
-  proofPda        String?
-  status          String   @default("pending")
-  recordedAt      DateTime @default(now())
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String   @db.ObjectId
+  walletAddress         String
+  co2OffsetGrams        Int
+  creditType            String   @default("forestry")
+  toucanTxHash          String?
+  onChainTxHash         String?
+  proofPda              String?
+  status                String   @default("pending")
+  decisionBudgetUsd     Float?
+  decisionPricePerTonneUsd Float?
+  decisionProjectName   String?
+  decisionVerificationStandard String?
+  recordedAt            DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([walletAddress, status, recordedAt(sort: Desc)])
+  @@unique([onChainTxHash])
+  @@index([proofPda])
 }
 
 model StakeRecord {
-  id              String   @id @default(cuid())
-  userId          String
-  amount          Float
-  durationDays    Int
-  greenScore      Int
-  effectiveApy    Float
-  estimatedYield  Float
-  solanaTxHash    String?  @unique
-  vaultAddress    String?
-  status          String   @default("simulated")
-  simulatedAt     DateTime @default(now())
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String   @db.ObjectId
+  walletAddress     String
+  amount            Float
+  durationDays      Int
+  greenScore        Int
+  effectiveApy      Float
+  estimatedYield    Float
+  solanaTxHash      String?  @unique
+  vaultAddress      String?
+  status            String   @default("simulated")
+  provider          String   @default("demo")
+  simulatedAt       DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([walletAddress, status, simulatedAt(sort: Desc)])
+}
+
+model RecommendationRun {
+  id                          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                      String   @db.ObjectId
+  walletAddress               String
+  categoriesRequested         String[]
+  totalPotentialSavingsMonthly Float
+  narratorProvider            String
+  model                       String?
+  promptHash                  String?
+  createdAt                   DateTime @default(now())
+  suggestions                 Json
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([walletAddress, createdAt(sort: Desc)])
+}
+
+model RecommendationAction {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String   @db.ObjectId
+  walletAddress       String
+  recommendationRunId String   @db.ObjectId
+  suggestionKey       String
+  action              String
+  actedAt             DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([walletAddress, actedAt(sort: Desc)])
+  @@index([recommendationRunId])
+}
+
+model ProtocolRateSnapshot {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  provider   String
+  metric     String
+  value      Float
+  capturedAt DateTime @default(now())
+
+  @@index([provider, metric, capturedAt(sort: Desc)])
 }

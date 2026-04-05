@@ -5,6 +5,7 @@ import {
 } from "@carboniq/contracts";
 import { emissionsService } from "../services/emissionsService.js";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
+import { persistAnalyzedTransactions } from "../services/walletDataService.js";
 
 export const analyzeTransactionsRouter = Router();
 
@@ -14,6 +15,11 @@ analyzeTransactionsRouter.post("/", async (req: Request, res: Response) => {
     const response = AnalyzeTransactionsResponseSchema.parse(
       emissionsService.analyzeTransactions(request)
     );
+    await persistAnalyzedTransactions({
+      wallet: request.wallet,
+      response,
+      plaidAccessToken: request.plaidAccessToken,
+    });
     res.json(response);
   } catch (err) {
     if (isZodLikeError(err)) {

@@ -23,6 +23,13 @@ export type ProcessedRecordOffsetResult = RecordOffsetResponse & {
   toucanTxHash: string;
 };
 
+export type OffsetDecisionContext = {
+  budgetUsd?: number;
+  pricePerTonneUsd?: number;
+  projectName?: string;
+  verificationStandard?: string;
+};
+
 export const defaultRecordOffsetDeps: RecordOffsetDeps = {
   recordImpact: solanaService.recordImpact,
   updateImpact: solanaService.updateImpact,
@@ -36,7 +43,8 @@ export const defaultRecordOffsetDeps: RecordOffsetDeps = {
 
 export async function processRecordOffset(
   input: RecordOffsetRequest,
-  deps: RecordOffsetDeps = defaultRecordOffsetDeps
+  deps: RecordOffsetDeps = defaultRecordOffsetDeps,
+  decisionContext?: OffsetDecisionContext
 ): Promise<ProcessedRecordOffsetResult> {
   const { wallet, co2eGrams, creditType, toucanTxHash } = input;
 
@@ -82,12 +90,17 @@ export async function processRecordOffset(
   await prisma.impactRecord.create({
     data: {
       userId: user.id,
+      walletAddress: wallet,
       co2OffsetGrams: co2eGrams,
       creditType,
       toucanTxHash: finalToucanHash,
       onChainTxHash: solanaSignature,
       proofPda: proofOfImpactAddress,
       status: OffsetStatus.RECORDED_ON_CHAIN,
+      decisionBudgetUsd: decisionContext?.budgetUsd,
+      decisionPricePerTonneUsd: decisionContext?.pricePerTonneUsd,
+      decisionProjectName: decisionContext?.projectName,
+      decisionVerificationStandard: decisionContext?.verificationStandard,
     },
   });
 

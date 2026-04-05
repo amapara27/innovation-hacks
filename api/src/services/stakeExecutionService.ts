@@ -18,6 +18,7 @@ import { prisma } from "../lib/prisma.js";
 import { refreshStoredGreenScore } from "./greenScoreService.js";
 import {
   computeEffectiveApyWithBase,
+  computeGreenBonus,
   simulateStake,
 } from "./stakingService.js";
 import { getProtocolBaseApy } from "./stakingRateService.js";
@@ -380,6 +381,7 @@ export async function executeDemoStake(
   await prisma.stakeRecord.create({
     data: {
       userId: user.id,
+      walletAddress: request.wallet,
       amount: request.amount,
       durationDays: request.durationDays,
       greenScore: greenScoreResponse.score,
@@ -388,6 +390,22 @@ export async function executeDemoStake(
       solanaTxHash: solanaSignature,
       vaultAddress: destinationAddress,
       status: "confirmed",
+      provider: protocolExecution?.provider ?? (request.solanaSignature ? "wallet_signed" : "demo"),
+    },
+  });
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      stakingBaseApy: parseFloat(baseApy.toFixed(4)),
+      stakingGreenBonus: parseFloat(
+        computeGreenBonus(greenScoreResponse.score).toFixed(4)
+      ),
+      stakingEffectiveApy: parseFloat(simulation.effectiveApy.toFixed(4)),
+      stakingStakedAmount: request.amount,
+      stakingAccruedYield: simulation.estimatedYield,
+      stakeVaultAddress: destinationAddress,
+      stakingUpdatedAt: new Date(),
     },
   });
 
