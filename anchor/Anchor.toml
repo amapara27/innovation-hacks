@@ -2,14 +2,14 @@
 seeds = false
 skip-lint = false
 
-[programs.localnet]
-carbon_iq = "CarbonIQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+[programs.devnet]
+carbon_iq = "99ZkMZawmHYwNPyQzseCbEbJFs6mxEYyhJrwdYGadCsR"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

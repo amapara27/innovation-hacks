@@ -308,6 +308,24 @@ export const SimulateStakeResponseSchema = z.object({
   totalReturn: z.number().positive(),
 });
 
+export const StakeRequestSchema = z.object({
+  wallet: WalletAddressSchema,
+  amount: z.number().positive().max(STAKING_MAX_AMOUNT),
+  durationDays: z.number().int().min(1).max(STAKING_MAX_DURATION_DAYS),
+});
+
+export const StakeResponseSchema = z.object({
+  wallet: WalletAddressSchema,
+  amount: z.number().positive(),
+  durationDays: z.number().int().positive(),
+  greenScore: z.number().min(GREEN_SCORE_MIN).max(GREEN_SCORE_MAX),
+  effectiveApy: z.number(),
+  estimatedYield: z.number().nonnegative(),
+  vaultAddress: WalletAddressSchema,
+  solanaSignature: z.string(),
+  status: z.enum(["confirmed", "failed"]),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  GET /api/leaderboard
 //  Blockchain Backend — Green Score leaderboard

@@ -19,6 +19,7 @@ model User {
 
   transactions TransactionAnalysis[]
   impacts      ImpactRecord[]
+  stakes       StakeRecord[]
 }
 
 model TransactionAnalysis {
@@ -37,8 +38,28 @@ model ImpactRecord {
   id              String   @id @default(cuid())
   userId          String
   co2OffsetGrams  Int
+  creditType      String   @default("forestry")
+  toucanTxHash    String?
   onChainTxHash   String?
+  proofPda        String?
+  status          String   @default("pending")
   recordedAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model StakeRecord {
+  id              String   @id @default(cuid())
+  userId          String
+  amount          Float
+  durationDays    Int
+  greenScore      Int
+  effectiveApy    Float
+  estimatedYield  Float
+  solanaTxHash    String?  @unique
+  vaultAddress    String?
+  status          String   @default("simulated")
+  simulatedAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
 }
