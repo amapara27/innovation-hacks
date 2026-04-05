@@ -476,6 +476,61 @@ describe("unified backend routes", () => {
     assert.equal(user.stakes[0]?.status, "confirmed");
   });
 
+  it("POST /api/stake uses protocol execution output when available", async () => {
+    const wallet = randomWallet();
+    let transferFallbackCalls = 0;
+
+    const router = stakeRouteModule.createStakeRouter({
+      getApiPayer: () => Keypair.generate(),
+      getSolanaConnection: () => ({}) as never,
+      confirmSolanaSignature: async () => {},
+      refreshStoredGreenScore: async () => ({
+        wallet,
+        score: 74,
+        tier: "tree",
+        breakdown: {
+          transactionEfficiency: 70,
+          spendingHabits: 72,
+          carbonOffsets: 76,
+          communityImpact: 78,
+        },
+      }),
+      getVaultAddress: () => Keypair.generate().publicKey,
+      sendStakeTransfer: async () => {
+        transferFallbackCalls += 1;
+        return "should-not-be-used";
+      },
+      executeProtocolStake: async () => ({
+        provider: "marinade",
+        solanaSignature: "marinade-sig-abc",
+        destinationAddress: Keypair.generate().publicKey.toBase58(),
+      }),
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: {
+        wallet,
+        amount: 3.2,
+        durationDays: 45,
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.wallet, wallet);
+    assert.equal(response.body.solanaSignature, "marinade-sig-abc");
+    assert.equal(transferFallbackCalls, 0);
+
+    const user = await prismaModule.prisma.user.findUniqueOrThrow({
+      where: { walletAddress: wallet },
+      include: { stakes: true },
+    });
+    assert.equal(user.stakes.length, 1);
+    assert.equal(user.stakes[0]?.solanaTxHash, "marinade-sig-abc");
+    assert.equal(user.stakes[0]?.status, "confirmed");
+  });
+
   it("GET /api/staking-info creates a new user and aggregates only executed stake data", async () => {
     const wallet = randomWallet();
     let response = await requestJson(stakingInfoRouteModule.stakingInfoRouter, {
