@@ -41,6 +41,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local tool/cache state
+api/.npm-cache/
+api/dev.db
+
 # TypeScript
 *.tsbuildinfo
 
@@ -51,4 +60,4 @@ coverage/
 
 demo
 
-mongodb-mcp.example.json
+mongodb-mcp.json

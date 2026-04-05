@@ -262,7 +262,11 @@ class OpenAISuggestionNarrator {
   constructor() {
     const disableInTest =
       process.env.NODE_ENV === "test" && !envFlag("CARBONIQ_FORCE_OPENAI_IN_TEST");
-    const recommenderEnabled = envFlag("CARBONIQ_USE_OPENAI_RECOMMENDER");
+    const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+    const recommenderEnabled =
+      process.env.CARBONIQ_USE_OPENAI_RECOMMENDER === undefined
+        ? hasOpenAiKey
+        : envFlag("CARBONIQ_USE_OPENAI_RECOMMENDER");
     const narratorEnabled = envFlag("CARBONIQ_USE_OPENAI_NARRATOR");
 
     if (disableInTest) {

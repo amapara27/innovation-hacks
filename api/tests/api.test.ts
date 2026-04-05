@@ -1,6 +1,8 @@
-import "dotenv/config";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
+import dotenv from "dotenv";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type Router } from "express";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import {
@@ -11,12 +13,19 @@ import {
   STAKING_GREEN_BONUS_MAX,
 } from "@carboniq/contracts";
 
+const testDir = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(testDir, "../.env") });
+
 process.env.NODE_ENV = "test";
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+const testDatabaseUrl = [
+  process.env.TEST_DATABASE_URL,
+  process.env.DATABASE_URL,
+  process.env.MONGODB_URI,
+].find((value) => value?.trim());
 if (!testDatabaseUrl) {
   throw new Error(
-    "Set TEST_DATABASE_URL or DATABASE_URL before running API tests against MongoDB."
+    "Set TEST_DATABASE_URL, DATABASE_URL, or MONGODB_URI before running API tests against MongoDB."
   );
 }
 process.env.DATABASE_URL = testDatabaseUrl;
@@ -159,41 +168,22 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  try {
-    await prismaModule.prisma.recommendationAction.deleteMany();
-    await prismaModule.prisma.recommendationRun.deleteMany();
-    await prismaModule.prisma.sustainabilityFundLedger.deleteMany();
-    await prismaModule.prisma.yieldRedistributionCredit.deleteMany();
-    await prismaModule.prisma.yieldRedistributionEvent.deleteMany();
-    await prismaModule.prisma.userBehaviorState.deleteMany();
-    await prismaModule.prisma.impactRecord.deleteMany();
-    await prismaModule.prisma.stakeRecord.deleteMany();
-    await prismaModule.prisma.transaction.deleteMany();
-    await prismaModule.prisma.protocolRateSnapshot.deleteMany();
-    await prismaModule.prisma.user.deleteMany();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("Transactions are not supported by this deployment")) {
-      throw error;
-    }
-
-    for (const collection of MONGO_COLLECTIONS) {
-      try {
-        await prismaModule.prisma.$runCommandRaw({
-          delete: collection,
-          deletes: [{ q: {}, limit: 0 }],
-        });
-      } catch (runCommandError) {
-        const runCommandMessage =
-          runCommandError instanceof Error
-            ? runCommandError.message
-            : String(runCommandError);
-        const namespaceMissing =
-          runCommandMessage.includes("NamespaceNotFound") ||
-          runCommandMessage.includes("ns not found");
-        if (!namespaceMissing) {
-          throw runCommandError;
-        }
+  for (const collection of MONGO_COLLECTIONS) {
+    try {
+      await prismaModule.prisma.$runCommandRaw({
+        delete: collection,
+        deletes: [{ q: {}, limit: 0 }],
+      });
+    } catch (runCommandError) {
+      const runCommandMessage =
+        runCommandError instanceof Error
+          ? runCommandError.message
+          : String(runCommandError);
+      const namespaceMissing =
+        runCommandMessage.includes("NamespaceNotFound") ||
+        runCommandMessage.includes("ns not found");
+      if (!namespaceMissing) {
+        throw runCommandError;
       }
     }
   }

@@ -483,6 +483,14 @@ async function getProjectedImpacts(userId: ObjectId, select?: Record<string, boo
   return impacts.map((impact) => applySelect(serializeId(impact), select));
 }
 
+async function getProjectedStakes(userId: ObjectId, select?: Record<string, boolean>) {
+  const stakes = await (await getCollection<StakeRecordDoc>("StakeRecord"))
+    .find({ userId })
+    .toArray();
+
+  return stakes.map((stake) => applySelect(serializeId(stake), select));
+}
+
 async function projectUser(userDoc: UserDoc, args?: any) {
   const normalized = normalizeUser(userDoc) as Record<string, unknown>;
 
@@ -493,11 +501,34 @@ async function projectUser(userDoc: UserDoc, args?: any) {
     );
   }
 
+  if (args?.include?.stakes) {
+    normalized.stakes = await getProjectedStakes(
+      userDoc._id,
+      args.include.stakes.select
+    );
+  }
+
   return applySelect(normalized, args?.select);
 }
 
 export const prisma: any = {
   user: {
+    async create(args: any) {
+      const collection = await getCollection<UserDoc>("User");
+      const now = new Date();
+      const document: UserDoc = {
+        _id: new ObjectId(),
+        ...normalizeUserCreate(
+          args.data ?? {},
+          args.data.walletAddress,
+          now
+        ),
+      };
+
+      await collection.insertOne(document);
+      return normalizeUser(document);
+    },
+
     async upsert(args: any) {
       const collection = await getCollection<UserDoc>("User");
       const now = new Date();
@@ -647,6 +678,33 @@ export const prisma: any = {
       return serializeId(document);
     },
 
+    async createMany(args: any) {
+      const collection = await getCollection<ImpactRecordDoc>("ImpactRecord");
+      const documents: ImpactRecordDoc[] = args.data.map((row: any) => ({
+        _id: new ObjectId(),
+        userId: toObjectId(row.userId),
+        walletAddress: row.walletAddress,
+        co2OffsetGrams: row.co2OffsetGrams,
+        creditType: row.creditType,
+        toucanTxHash: row.toucanTxHash,
+        onChainTxHash: row.onChainTxHash,
+        proofPda: row.proofPda,
+        status: row.status,
+        decisionBudgetUsd: row.decisionBudgetUsd,
+        decisionPricePerTonneUsd: row.decisionPricePerTonneUsd,
+        decisionProjectName: row.decisionProjectName,
+        decisionVerificationStandard: row.decisionVerificationStandard,
+        recordedAt: row.recordedAt ?? new Date(),
+      }));
+
+      if (documents.length === 0) {
+        return { count: 0 };
+      }
+
+      const result = await collection.insertMany(documents);
+      return { count: result.insertedCount };
+    },
+
     async findMany(args: any = {}) {
       const collection = await getCollection<ImpactRecordDoc>("ImpactRecord");
       const docs = await collection.find(buildImpactFilter(args.where)).toArray();
@@ -688,6 +746,32 @@ export const prisma: any = {
 
       await collection.insertOne(document);
       return serializeId(document);
+    },
+
+    async createMany(args: any) {
+      const collection = await getCollection<StakeRecordDoc>("StakeRecord");
+      const documents: StakeRecordDoc[] = args.data.map((row: any) => ({
+        _id: new ObjectId(),
+        userId: toObjectId(row.userId),
+        walletAddress: row.walletAddress,
+        amount: row.amount,
+        durationDays: row.durationDays,
+        greenScore: row.greenScore,
+        effectiveApy: row.effectiveApy,
+        estimatedYield: row.estimatedYield,
+        solanaTxHash: row.solanaTxHash ?? null,
+        vaultAddress: row.vaultAddress ?? null,
+        status: row.status,
+        provider: row.provider ?? "demo",
+        simulatedAt: row.simulatedAt ?? new Date(),
+      }));
+
+      if (documents.length === 0) {
+        return { count: 0 };
+      }
+
+      const result = await collection.insertMany(documents);
+      return { count: result.insertedCount };
     },
 
     async aggregate(args: any = {}) {
