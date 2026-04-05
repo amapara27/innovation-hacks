@@ -39,6 +39,25 @@
     z-index: 2;
   }
 
+  .wallet-adapter-dropdown {
+    @apply w-full;
+  }
+
+  .wallet-adapter-button-trigger {
+    min-height: 52px !important;
+    width: 100% !important;
+    justify-content: center !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .wallet-adapter-dropdown-list {
+    top: auto !important;
+    bottom: calc(100% + 0.625rem) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 80 !important;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 8px;

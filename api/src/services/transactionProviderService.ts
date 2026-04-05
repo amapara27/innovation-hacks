@@ -8,6 +8,7 @@ import {
 } from "../lib/aiRules.js";
 import { roundTo } from "../lib/aiMath.js";
 import { demoBankLedgerService } from "./demoBankLedgerService.js";
+import { getPersistedUploadTransactions } from "./walletDataService.js";
 
 function toIsoSeconds(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -47,12 +48,39 @@ function getSeededTransactions(wallet: string): RawTransaction[] {
 }
 
 export const transactionProvider = {
-  getTransactions(wallet: string, _plaidAccessToken?: string): RawTransaction[] {
-    const connectedLedger = demoBankLedgerService.getWalletLedger(wallet);
-    if (connectedLedger) {
-      return connectedLedger;
+  async getTransactions(
+    wallet: string,
+    _plaidAccessToken?: string
+  ): Promise<{
+    transactions: RawTransaction[];
+    source: "upload" | "seeded";
+    sourceLabel?: string;
+  }> {
+    const persistedUpload = await getPersistedUploadTransactions(wallet);
+    if (persistedUpload.length > 0) {
+      return {
+        transactions: persistedUpload.map((transaction) => ({
+          transactionId: transaction.transactionId,
+          description: transaction.description,
+          amountUsd: transaction.amountUsd,
+          mccCode: transaction.mccCode ?? undefined,
+          date: toIsoSeconds(transaction.date),
+        })),
+        source: "upload",
+      };
     }
 
-    return getSeededTransactions(wallet);
+    const connectedLedger = demoBankLedgerService.getWalletLedger(wallet);
+    if (connectedLedger) {
+      return {
+        transactions: connectedLedger,
+        source: "upload",
+      };
+    }
+
+    return {
+      transactions: getSeededTransactions(wallet),
+      source: "seeded",
+    };
   },
 };

@@ -30,7 +30,7 @@ function selectDominantCategory(
 export async function getTriggerOffsetDecision(
   request: TriggerOffsetRequest
 ): Promise<OffsetDecision> {
-  const snapshot = emissionsService.getCanonicalSnapshot(request.wallet);
+  const snapshot = await emissionsService.getCanonicalSnapshot(request.wallet);
   const confirmedOffsets = await prisma.impactRecord.aggregate({
     where: {
       walletAddress: request.wallet,

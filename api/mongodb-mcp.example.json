@@ -10,7 +10,7 @@
           "--readOnly"
         ],
         "env": {
-          "MDB_MCP_CONNECTION_STRING": "mongodb+srv://ibbs07:12345@cluster0.e5ziyox.mongodb.net/?appName=Cluster0"
+          "MDB_MCP_CONNECTION_STRING": "mongodb://127.0.0.1:27017/carboniq"
         }
       }
     }

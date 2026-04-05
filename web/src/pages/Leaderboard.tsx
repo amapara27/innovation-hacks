@@ -1,53 +1,45 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Progress } from "@/components/ui/Progress";
+import { useEffect, useState } from "react";
 import { Trophy } from "lucide-react";
-
-interface LeaderboardEntry {
-  rank: number;
-  wallet: string;
-  walletShort: string;
-  score: number;
-  totalCo2eOffset: number;
-}
-
-interface LeaderboardResponse {
-  entries: LeaderboardEntry[];
-  totalEntries: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Unexpected error.";
-}
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Progress } from "@/components/ui/Progress";
+import { formatError, requestJson, type LeaderboardResponse } from "@/lib/api";
 
 export default function Leaderboard() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<LeaderboardResponse | null>(null);
 
-  async function loadLeaderboard() {
-    setIsLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/leaderboard?page=1&pageSize=20");
-      if (!response.ok) {
-        throw new Error(`Request failed (${response.status})`);
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const response = await requestJson<LeaderboardResponse>(
+          "/api/leaderboard?page=1&pageSize=25"
+        );
+
+        if (!cancelled) {
+          setData(response);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(formatError(loadError));
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
-      const json = (await response.json()) as LeaderboardResponse;
-      setData(json);
-    } catch (loadError) {
-      setError(formatError(loadError));
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-10">
@@ -56,7 +48,7 @@ export default function Leaderboard() {
           Leaderboard
         </h1>
         <p className="text-stone-400 text-base tracking-wide">
-          Live rankings based on stored green scores.
+          Live rankings based on stored green scores, with a full field always visible.
         </p>
       </div>
 
@@ -68,40 +60,55 @@ export default function Leaderboard() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button onClick={loadLeaderboard} disabled={isLoading}>
-            {isLoading ? "Loading..." : "Load Leaderboard"}
-          </Button>
           {error && <p className="text-sm text-clay-400">{error}</p>}
-          {data && (
-            <p className="text-xs text-stone-500">
-              Showing {data.entries.length} of {data.totalEntries} entries
-            </p>
-          )}
-          {data && (
+
+          {isLoading && (
             <div className="space-y-2">
-              {data.entries.map((entry) => (
+              {Array.from({ length: 10 }, (_, index) => (
                 <div
-                  key={entry.wallet}
-                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-900/40 transition-all duration-300 border border-transparent hover:border-stone-800/60"
+                  key={index}
+                  className="flex items-center gap-4 p-3 rounded-lg border border-stone-900 animate-pulse"
                 >
-                  <span className="text-sm font-mono text-stone-500 w-5 text-center">
-                    {entry.rank}
-                  </span>
-                  <p className="font-mono text-sm flex-1 text-stone-400">
-                    {entry.walletShort}
-                  </p>
-                  <div className="w-32 hidden sm:block">
-                    <Progress value={entry.score} />
-                  </div>
-                  <p className="font-semibold text-forest-400 w-12 text-right">
-                    {entry.score}
-                  </p>
-                  <p className="text-xs text-stone-500 w-28 text-right">
-                    {(entry.totalCo2eOffset / 1000).toFixed(2)} kg
-                  </p>
+                  <div className="h-4 w-5 rounded bg-stone-800" />
+                  <div className="h-4 flex-1 rounded bg-stone-900" />
+                  <div className="hidden sm:block h-2 w-32 rounded bg-stone-900" />
+                  <div className="h-4 w-12 rounded bg-stone-800" />
+                  <div className="h-4 w-20 rounded bg-stone-900" />
                 </div>
               ))}
             </div>
+          )}
+
+          {data && (
+            <>
+              <p className="text-xs text-stone-500">
+                Showing {data.entries.length} of {data.totalEntries} entries
+              </p>
+              <div className="space-y-2">
+                {data.entries.map((entry) => (
+                  <div
+                    key={entry.wallet}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-surface-900/40 transition-all duration-300 border border-transparent hover:border-stone-800/60"
+                  >
+                    <span className="text-sm font-mono text-stone-500 w-5 text-center">
+                      {entry.rank}
+                    </span>
+                    <p className="font-mono text-sm flex-1 text-stone-400">
+                      {entry.walletShort}
+                    </p>
+                    <div className="w-32 hidden sm:block">
+                      <Progress value={entry.score} />
+                    </div>
+                    <p className="font-semibold text-forest-400 w-12 text-right">
+                      {entry.score}
+                    </p>
+                    <p className="text-xs text-stone-500 w-28 text-right">
+                      {(entry.totalCo2eOffset / 1000).toFixed(2)} kg
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -14,10 +14,9 @@ import {
 } from "@carboniq/contracts";
 import {
   clampGreenScore,
-  getGreenScoreTier,
-  shortenWallet,
 } from "../lib/blockchain.js";
 import { prisma } from "../lib/prisma.js";
+import { buildRankedLeaderboardEntries } from "../services/leaderboardService.js";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 
 export const leaderboardRouter = Router();
@@ -31,40 +30,37 @@ leaderboardRouter.get("/", async (req: Request, res: Response) => {
 
     const skip = (page - 1) * pageSize;
 
-    // Get total count
-    const totalEntries = await prisma.user.count({
-      where: { greenScore: { gt: 0 } },
-    });
-
-    // Get paginated users sorted by green score
-    const users = await prisma.user.findMany({
+    const users = (await prisma.user.findMany({
       where: { greenScore: { gt: 0 } },
       orderBy: { greenScore: "desc" },
-      skip,
-      take: pageSize,
       include: {
         impacts: {
           select: { co2OffsetGrams: true },
         },
       },
-    });
+    })) as Array<{
+      walletAddress: string;
+      greenScore: number;
+      impacts: Array<{ co2OffsetGrams: number }>;
+    }>;
 
-    const entries = users.map((user, index) => {
+    const realEntries = users.map((user) => {
       const totalCo2eOffset = user.impacts.reduce(
-        (sum, impact) => sum + impact.co2OffsetGrams,
+        (sum: number, impact: { co2OffsetGrams: number }) =>
+          sum + impact.co2OffsetGrams,
         0
       );
 
       return {
-        rank: skip + index + 1,
         wallet: user.walletAddress,
-        walletShort: shortenWallet(user.walletAddress),
         score: clampGreenScore(user.greenScore),
-        tier: getGreenScoreTier(user.greenScore),
         totalCo2eOffset,
       };
     });
+    const rankedEntries = buildRankedLeaderboardEntries(realEntries);
 
+    const entries = rankedEntries.slice(skip, skip + pageSize);
+    const totalEntries = rankedEntries.length;
     const totalPages = Math.ceil(totalEntries / pageSize);
 
     const response = LeaderboardResponseSchema.parse({

@@ -248,6 +248,19 @@ export const SwapSuggestionsResponseSchema = z.object({
   totalPotentialSavingsMonthly: z.number().nonnegative(),
 });
 
+export const RecommendationActionRequestSchema = z.object({
+  wallet: WalletAddressSchema,
+  suggestionKey: z.string().min(1),
+  action: z.enum(["adopted", "cleared"]),
+});
+
+export const RecommendationActionResponseSchema = z.object({
+  wallet: WalletAddressSchema,
+  suggestionKey: z.string(),
+  action: z.enum(["adopted", "cleared"]),
+  actedAt: z.string(),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  POST /api/trigger-offset
 //  AI Backend → Offset Agent decides credit type + amount
@@ -380,6 +393,68 @@ export const StakeResponseSchema = z.object({
   status: z.enum(["confirmed", "failed"]),
 });
 
+export const StakeSettlementSourceSchema = z.enum([
+  "vault_onchain",
+  "api_payer_onchain",
+  "demo_accounting",
+]);
+
+export const StakeCollectRequestSchema = z.object({
+  wallet: WalletAddressSchema,
+});
+
+export const StakeCollectResponseSchema = z.object({
+  wallet: WalletAddressSchema,
+  collectedAmount: z.number().nonnegative(),
+  remainingAccruedYield: z.number().nonnegative(),
+  settlementSource: StakeSettlementSourceSchema,
+  solanaSignature: z.string().optional(),
+  explorerUrl: z.string().optional(),
+});
+
+export const StakeWithdrawRequestSchema = z.object({
+  wallet: WalletAddressSchema,
+  amount: z.number().positive().max(STAKING_MAX_AMOUNT),
+});
+
+export const StakeWithdrawResponseSchema = z.object({
+  wallet: WalletAddressSchema,
+  withdrawnAmount: z.number().positive(),
+  remainingStakedAmount: z.number().nonnegative(),
+  settlementSource: StakeSettlementSourceSchema,
+  solanaSignature: z.string().optional(),
+  explorerUrl: z.string().optional(),
+});
+
+export const SimulateStakeTimelineRequestSchema = z.object({
+  principal: z.number().nonnegative().max(STAKING_MAX_AMOUNT),
+  currentAccruedYield: z.number().nonnegative(),
+  greenScore: z.number().min(GREEN_SCORE_MIN).max(GREEN_SCORE_MAX),
+  horizonDays: z.number().int().min(1).max(STAKING_MAX_DURATION_DAYS),
+});
+
+export const SimulateStakeTimelineEventSchema = z.object({
+  day: z.number().int().positive(),
+  type: z.enum(["soft_decay_started", "hard_reset_triggered"]),
+  description: z.string(),
+});
+
+export const SimulateStakeTimelinePointSchema = z.object({
+  day: z.number().int().nonnegative(),
+  projectedAccruedYield: z.number().nonnegative(),
+  baselineAccruedYield: z.number().nonnegative(),
+  multiplier: z.number().min(0).max(1),
+});
+
+export const SimulateStakeTimelineResponseSchema = z.object({
+  horizonDays: z.number().int().positive(),
+  projectedAccruedYield: z.number().nonnegative(),
+  baselineAccruedYield: z.number().nonnegative(),
+  earningsDelta: z.number(),
+  events: z.array(SimulateStakeTimelineEventSchema),
+  points: z.array(SimulateStakeTimelinePointSchema).min(1),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  GET /api/leaderboard
 //  Blockchain Backend — Green Score leaderboard
@@ -407,6 +482,17 @@ export const LeaderboardResponseSchema = z.object({
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
   totalPages: z.number().int().nonnegative(),
+});
+
+export const WalletStateResponseSchema = z.object({
+  wallet: WalletAddressSchema,
+  hasUploadedTransactions: z.boolean(),
+  latestUploadAt: z.string().optional(),
+  analysis: AnalyzeTransactionsResponseSchema.nullable(),
+  greenScore: GreenScoreResponseSchema.nullable(),
+  stakingInfo: StakingInfoResponseSchema.nullable(),
+  latestRecommendations: SwapSuggestionsResponseSchema.nullable(),
+  adoptedSuggestionKeys: z.array(z.string()),
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

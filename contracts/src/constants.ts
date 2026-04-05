@@ -17,9 +17,9 @@ export const GREEN_SCORE_MAX = 100;
  *  AI Backend computes these subcategory scores; both backends must agree
  *  on the final weighting. */
 export const GREEN_SCORE_WEIGHTS = {
-  transactionEfficiency: 0.25,
-  spendingHabits: 0.25,
-  carbonOffsets: 0.30,
+  transactionEfficiency: 0.35,
+  spendingHabits: 0.35,
+  carbonOffsets: 0.10,
   communityImpact: 0.20,
 } as const;
 

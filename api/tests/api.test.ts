@@ -1,6 +1,8 @@
-import "dotenv/config";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
+import dotenv from "dotenv";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type Router } from "express";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import {
@@ -11,12 +13,19 @@ import {
   STAKING_GREEN_BONUS_MAX,
 } from "@carboniq/contracts";
 
+const testDir = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(testDir, "../.env") });
+
 process.env.NODE_ENV = "test";
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+const testDatabaseUrl = [
+  process.env.TEST_DATABASE_URL,
+  process.env.DATABASE_URL,
+  process.env.MONGODB_URI,
+].find((value) => value?.trim());
 if (!testDatabaseUrl) {
   throw new Error(
-    "Set TEST_DATABASE_URL or DATABASE_URL before running API tests against MongoDB."
+    "Set TEST_DATABASE_URL, DATABASE_URL, or MONGODB_URI before running API tests against MongoDB."
   );
 }
 process.env.DATABASE_URL = testDatabaseUrl;
@@ -28,9 +37,16 @@ type GreenScoreRouteModule = typeof import("../src/routes/greenScore.js");
 type SwapSuggestionsRouteModule = typeof import("../src/routes/swapSuggestions.js");
 type TriggerOffsetRouteModule = typeof import("../src/routes/triggerOffset.js");
 type SimulateStakeRouteModule = typeof import("../src/routes/simulateStake.js");
+type SimulateStakeTimelineRouteModule = typeof import(
+  "../src/routes/simulateStakeTimeline.js"
+);
 type StakeRouteModule = typeof import("../src/routes/stake.js");
+type StakeCollectRouteModule = typeof import("../src/routes/stakeCollect.js");
+type StakeWithdrawRouteModule = typeof import("../src/routes/stakeWithdraw.js");
 type StakingInfoRouteModule = typeof import("../src/routes/stakingInfo.js");
 type LeaderboardRouteModule = typeof import("../src/routes/leaderboard.js");
+type WalletStateRouteModule = typeof import("../src/routes/walletState.js");
+type RecommendationActionsRouteModule = typeof import("../src/routes/recommendationActions.js");
 type NftMetadataRouteModule = typeof import("../src/routes/nftMetadata.js");
 type RecordOffsetRouteModule = typeof import("../src/routes/recordOffset.js");
 type GreenScoreServiceModule = typeof import("../src/services/greenScoreService.js");
@@ -42,9 +58,14 @@ let greenScoreRouteModule: GreenScoreRouteModule;
 let swapSuggestionsRouteModule: SwapSuggestionsRouteModule;
 let triggerOffsetRouteModule: TriggerOffsetRouteModule;
 let simulateStakeRouteModule: SimulateStakeRouteModule;
+let simulateStakeTimelineRouteModule: SimulateStakeTimelineRouteModule;
 let stakeRouteModule: StakeRouteModule;
+let stakeCollectRouteModule: StakeCollectRouteModule;
+let stakeWithdrawRouteModule: StakeWithdrawRouteModule;
 let stakingInfoRouteModule: StakingInfoRouteModule;
 let leaderboardRouteModule: LeaderboardRouteModule;
+let walletStateRouteModule: WalletStateRouteModule;
+let recommendationActionsRouteModule: RecommendationActionsRouteModule;
 let nftMetadataRouteModule: NftMetadataRouteModule;
 let recordOffsetRouteModule: RecordOffsetRouteModule;
 let greenScoreServiceModule: GreenScoreServiceModule;
@@ -150,50 +171,40 @@ before(async () => {
   swapSuggestionsRouteModule = await import("../src/routes/swapSuggestions.js");
   triggerOffsetRouteModule = await import("../src/routes/triggerOffset.js");
   simulateStakeRouteModule = await import("../src/routes/simulateStake.js");
+  simulateStakeTimelineRouteModule = await import(
+    "../src/routes/simulateStakeTimeline.js"
+  );
   stakeRouteModule = await import("../src/routes/stake.js");
+  stakeCollectRouteModule = await import("../src/routes/stakeCollect.js");
+  stakeWithdrawRouteModule = await import("../src/routes/stakeWithdraw.js");
   stakingInfoRouteModule = await import("../src/routes/stakingInfo.js");
   leaderboardRouteModule = await import("../src/routes/leaderboard.js");
+  walletStateRouteModule = await import("../src/routes/walletState.js");
+  recommendationActionsRouteModule = await import(
+    "../src/routes/recommendationActions.js"
+  );
   nftMetadataRouteModule = await import("../src/routes/nftMetadata.js");
   recordOffsetRouteModule = await import("../src/routes/recordOffset.js");
   greenScoreServiceModule = await import("../src/services/greenScoreService.js");
 });
 
 beforeEach(async () => {
-  try {
-    await prismaModule.prisma.recommendationAction.deleteMany();
-    await prismaModule.prisma.recommendationRun.deleteMany();
-    await prismaModule.prisma.sustainabilityFundLedger.deleteMany();
-    await prismaModule.prisma.yieldRedistributionCredit.deleteMany();
-    await prismaModule.prisma.yieldRedistributionEvent.deleteMany();
-    await prismaModule.prisma.userBehaviorState.deleteMany();
-    await prismaModule.prisma.impactRecord.deleteMany();
-    await prismaModule.prisma.stakeRecord.deleteMany();
-    await prismaModule.prisma.transaction.deleteMany();
-    await prismaModule.prisma.protocolRateSnapshot.deleteMany();
-    await prismaModule.prisma.user.deleteMany();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("Transactions are not supported by this deployment")) {
-      throw error;
-    }
-
-    for (const collection of MONGO_COLLECTIONS) {
-      try {
-        await prismaModule.prisma.$runCommandRaw({
-          delete: collection,
-          deletes: [{ q: {}, limit: 0 }],
-        });
-      } catch (runCommandError) {
-        const runCommandMessage =
-          runCommandError instanceof Error
-            ? runCommandError.message
-            : String(runCommandError);
-        const namespaceMissing =
-          runCommandMessage.includes("NamespaceNotFound") ||
-          runCommandMessage.includes("ns not found");
-        if (!namespaceMissing) {
-          throw runCommandError;
-        }
+  for (const collection of MONGO_COLLECTIONS) {
+    try {
+      await prismaModule.prisma.$runCommandRaw({
+        delete: collection,
+        deletes: [{ q: {}, limit: 0 }],
+      });
+    } catch (runCommandError) {
+      const runCommandMessage =
+        runCommandError instanceof Error
+          ? runCommandError.message
+          : String(runCommandError);
+      const namespaceMissing =
+        runCommandMessage.includes("NamespaceNotFound") ||
+        runCommandMessage.includes("ns not found");
+      if (!namespaceMissing) {
+        throw runCommandError;
       }
     }
   }
@@ -725,6 +736,259 @@ describe("unified backend routes", () => {
     assert.equal(user.stakes[0]?.vaultAddress, vaultAddress.toBase58());
   });
 
+  it("POST /api/stake/collect succeeds with vault settlement and records a negative yield adjustment", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 78,
+        stakingEffectiveApy: 7.2,
+      },
+    });
+
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 6,
+        durationDays: 45,
+        greenScore: 78,
+        effectiveApy: 7.2,
+        estimatedYield: 1.25,
+        solanaTxHash: "stake-base-collect-1",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const router = stakeCollectRouteModule.createStakeCollectRouter({
+      settlePayout: async () => ({
+        settlementSource: "vault_onchain",
+        solanaSignature: "collect-vault-sig-1",
+        explorerUrl:
+          "https://explorer.solana.com/tx/collect-vault-sig-1?cluster=devnet",
+        sourceAddress: randomWallet(),
+      }),
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: { wallet },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.settlementSource, "vault_onchain");
+    assert.equal(response.body.solanaSignature, "collect-vault-sig-1");
+    assert.equal(response.body.collectedAmount, 1.25);
+    assert.equal(response.body.remainingAccruedYield, 0);
+
+    const refreshed = await prismaModule.prisma.user.findUniqueOrThrow({
+      where: { walletAddress: wallet },
+      include: { stakes: true },
+    });
+    assert.equal(refreshed.stakes.length, 2);
+    const collectAdjustment = refreshed.stakes.find((row) =>
+      row.provider.startsWith("collect_")
+    );
+    assert.equal(collectAdjustment?.provider, "collect_vault_onchain");
+    assert.equal(collectAdjustment?.estimatedYield, -1.25);
+    assert.equal(collectAdjustment?.amount, 0);
+  });
+
+  it("POST /api/stake/collect falls back to API payer settlement when vault path fails", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 66,
+        stakingEffectiveApy: 6.9,
+      },
+    });
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 4,
+        durationDays: 30,
+        greenScore: 66,
+        effectiveApy: 6.9,
+        estimatedYield: 0.4,
+        solanaTxHash: "stake-base-collect-2",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const fallbackTrace: string[] = [];
+    const router = stakeCollectRouteModule.createStakeCollectRouter({
+      settlePayout: async () => {
+        fallbackTrace.push("vault_failed");
+        fallbackTrace.push("api_payer_success");
+        return {
+          settlementSource: "api_payer_onchain",
+          solanaSignature: "collect-api-sig-2",
+          explorerUrl:
+            "https://explorer.solana.com/tx/collect-api-sig-2?cluster=devnet",
+          sourceAddress: randomWallet(),
+        };
+      },
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: { wallet },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.settlementSource, "api_payer_onchain");
+    assert.equal(response.body.solanaSignature, "collect-api-sig-2");
+    assert.deepEqual(fallbackTrace, ["vault_failed", "api_payer_success"]);
+  });
+
+  it("POST /api/stake/collect falls back to demo accounting when on-chain settlement paths fail", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 54,
+        stakingEffectiveApy: 6.7,
+      },
+    });
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 5,
+        durationDays: 30,
+        greenScore: 54,
+        effectiveApy: 6.7,
+        estimatedYield: 0.35,
+        solanaTxHash: "stake-base-collect-3",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const router = stakeCollectRouteModule.createStakeCollectRouter({
+      settlePayout: async () => ({
+        settlementSource: "demo_accounting",
+      }),
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const response = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: { wallet },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.settlementSource, "demo_accounting");
+    assert.equal(response.body.solanaSignature, undefined);
+    assert.equal(response.body.remainingAccruedYield, 0);
+  });
+
+  it("POST /api/stake/withdraw rejects over-withdraw and updates remaining principal", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 72,
+        stakingEffectiveApy: 7.1,
+      },
+    });
+    await prismaModule.prisma.stakeRecord.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        amount: 3,
+        durationDays: 45,
+        greenScore: 72,
+        effectiveApy: 7.1,
+        estimatedYield: 0.2,
+        solanaTxHash: "stake-base-withdraw-1",
+        vaultAddress: randomWallet(),
+        status: "confirmed",
+        provider: "demo",
+      },
+    });
+
+    const router = stakeWithdrawRouteModule.createStakeWithdrawRouter({
+      settlePayout: async () => ({
+        settlementSource: "demo_accounting",
+      }),
+      getProtocolBaseApy: async () => STAKING_BASE_APY,
+    });
+
+    const tooLarge = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: {
+        wallet,
+        amount: 4,
+      },
+    });
+    assert.equal(tooLarge.status, 422);
+
+    const ok = await requestJson(router, {
+      method: "POST",
+      path: "/",
+      body: {
+        wallet,
+        amount: 1.25,
+      },
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.withdrawnAmount, 1.25);
+    assert.equal(ok.body.remainingStakedAmount, 1.75);
+
+    const refreshed = await prismaModule.prisma.user.findUniqueOrThrow({
+      where: { walletAddress: wallet },
+      include: { stakes: true },
+    });
+    const withdrawAdjustment = refreshed.stakes.find((row) =>
+      row.provider.startsWith("withdraw_")
+    );
+    assert.equal(withdrawAdjustment?.amount, -1.25);
+    assert.equal(withdrawAdjustment?.estimatedYield, 0);
+  });
+
+  it("POST /api/simulate-stake-timeline emits soft decay and hard reset events for sustained low scores", async () => {
+    const response = await requestJson(
+      simulateStakeTimelineRouteModule.simulateStakeTimelineRouter,
+      {
+        method: "POST",
+        path: "/",
+        body: {
+          principal: 10,
+          currentAccruedYield: 0.5,
+          greenScore: 20,
+          horizonDays: 20,
+        },
+      }
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.horizonDays, 20);
+    assert.ok(response.body.projectedAccruedYield <= response.body.baselineAccruedYield);
+    assert.ok(response.body.earningsDelta <= 0);
+    assert.deepEqual(
+      response.body.events.map((event: { type: string }) => event.type),
+      ["soft_decay_started", "hard_reset_triggered"]
+    );
+    const day14 = response.body.points.find(
+      (point: { day: number }) => point.day === 14
+    );
+    assert.equal(day14?.projectedAccruedYield, 0);
+  });
+
   it("GET /api/staking-info creates a new user and aggregates only executed stake data", async () => {
     const wallet = randomWallet();
     let response = await requestJson(stakingInfoRouteModule.stakingInfoRouter, {
@@ -788,6 +1052,65 @@ describe("unified backend routes", () => {
     assert.equal(response.body.accruedYield, 0.74);
   });
 
+  it("GET /api/staking-info reflects collect and withdraw adjustments in principal and accrued yield", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 63,
+      },
+    });
+
+    await prismaModule.prisma.stakeRecord.createMany({
+      data: [
+        {
+          userId: user.id,
+          walletAddress: wallet,
+          amount: 5,
+          durationDays: 30,
+          greenScore: 63,
+          effectiveApy: 6.8,
+          estimatedYield: 1.0,
+          solanaTxHash: "stake-adjust-base-1",
+          vaultAddress: randomWallet(),
+          status: "confirmed",
+          provider: "demo",
+        },
+        {
+          userId: user.id,
+          walletAddress: wallet,
+          amount: 0,
+          durationDays: 0,
+          greenScore: 63,
+          effectiveApy: 6.8,
+          estimatedYield: -0.4,
+          status: "confirmed",
+          provider: "collect_demo_accounting",
+        },
+        {
+          userId: user.id,
+          walletAddress: wallet,
+          amount: -1.5,
+          durationDays: 0,
+          greenScore: 63,
+          effectiveApy: 6.8,
+          estimatedYield: 0,
+          status: "confirmed",
+          provider: "withdraw_demo_accounting",
+        },
+      ],
+    });
+
+    const response = await requestJson(stakingInfoRouteModule.stakingInfoRouter, {
+      method: "GET",
+      path: `/?wallet=${wallet}`,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.stakedAmount, 3.5);
+    assert.equal(response.body.accruedYield, 0.6);
+  });
+
   it("GET /api/leaderboard paginates and sorts by score descending", async () => {
     const firstUser = await prismaModule.prisma.user.create({
       data: {
@@ -827,12 +1150,209 @@ describe("unified backend routes", () => {
     });
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.totalEntries, 2);
-    assert.equal(response.body.totalPages, 2);
+    assert.equal(response.body.totalEntries, 25);
+    assert.equal(response.body.totalPages, 25);
     assert.equal(response.body.entries.length, 1);
     assert.equal(response.body.entries[0].wallet, firstUser.walletAddress);
     assert.equal(response.body.entries[0].score, 95);
     assert.equal(response.body.entries[0].totalCo2eOffset, 8_000);
+  });
+
+  it("GET /api/wallet-state rehydrates uploaded analysis, score, staking, and saved recommendations", async () => {
+    const wallet = randomWallet();
+    const uploadedAt = new Date("2026-04-05T10:15:00.000Z");
+    const sourceLabel = `upload:${uploadedAt.toISOString()}`;
+    const suggestionKey = "groceries::current::swap";
+    const user = await prismaModule.prisma.user.create({
+      data: {
+        walletAddress: wallet,
+        greenScore: 84,
+        breakdownTransactionEfficiency: 88,
+        breakdownSpendingHabits: 82,
+        breakdownCarbonOffsets: 14,
+        breakdownCommunityImpact: 9,
+        stakingBaseApy: STAKING_BASE_APY,
+        stakingGreenBonus: 1.25,
+        stakingEffectiveApy: STAKING_BASE_APY + 1.25,
+        stakingStakedAmount: 3.5,
+        stakeVaultAddress: randomWallet(),
+        latestUploadAt: uploadedAt,
+        latestUploadSourceLabel: sourceLabel,
+      },
+    });
+
+    await prismaModule.prisma.transaction.upsert({
+      where: {
+        walletAddress_transactionId: {
+          walletAddress: wallet,
+          transactionId: "upload_1",
+        },
+      },
+      create: {
+        walletAddress: wallet,
+        transactionId: "upload_1",
+        description: "Whole Foods",
+        amountUsd: 84.12,
+        mccCode: "5411",
+        category: EmissionCategory.GROCERIES,
+        co2eGrams: 640,
+        emissionFactor: 0.0076,
+        date: new Date("2026-04-04T12:00:00.000Z"),
+        sourceLabel,
+        analyzedAt: uploadedAt,
+      },
+      update: {},
+    });
+    await prismaModule.prisma.transaction.upsert({
+      where: {
+        walletAddress_transactionId: {
+          walletAddress: wallet,
+          transactionId: "upload_2",
+        },
+      },
+      create: {
+        walletAddress: wallet,
+        transactionId: "upload_2",
+        description: "Dr. Bronner's Soap",
+        amountUsd: 19.49,
+        mccCode: "5999",
+        category: EmissionCategory.HEALTH,
+        co2eGrams: 210,
+        emissionFactor: 0.0108,
+        date: new Date("2026-04-03T12:00:00.000Z"),
+        sourceLabel,
+        analyzedAt: uploadedAt,
+      },
+      update: {},
+    });
+
+    const recommendationRun = await prismaModule.prisma.recommendationRun.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        categoriesRequested: [EmissionCategory.GROCERIES],
+        suggestions: [
+          {
+            currentCategory: EmissionCategory.GROCERIES,
+            currentDescription: "Name-brand oat milk",
+            currentCo2eMonthly: 1_220,
+            alternativeDescription: "Store-brand oat milk",
+            alternativeCo2eMonthly: 720,
+            co2eSavingsMonthly: 500,
+            priceDifferenceUsd: -1.15,
+            difficulty: "easy",
+          },
+        ],
+        totalPotentialSavingsMonthly: 500,
+        narratorProvider: "openai",
+        model: "gpt-5.4-mini",
+        promptHash: "wallet-state-test",
+        createdAt: uploadedAt,
+      },
+    });
+
+    await prismaModule.prisma.recommendationAction.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        recommendationRunId: recommendationRun.id,
+        suggestionKey,
+        action: "adopted",
+        actedAt: uploadedAt,
+      },
+    });
+
+    const response = await requestJson(walletStateRouteModule.walletStateRouter, {
+      method: "GET",
+      path: `/?wallet=${wallet}`,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.wallet, wallet);
+    assert.equal(response.body.hasUploadedTransactions, true);
+    assert.equal(response.body.latestUploadAt, uploadedAt.toISOString());
+    assert.equal(response.body.analysis?.transactionCount, 2);
+    assert.equal(response.body.analysis?.totalCo2eGrams, 850);
+    assert.equal(response.body.greenScore?.score, 84);
+    assert.equal(response.body.stakingInfo?.stakedAmount, 3.5);
+    assert.equal(response.body.latestRecommendations?.suggestions.length, 1);
+    assert.deepEqual(response.body.adoptedSuggestionKeys, [suggestionKey]);
+  });
+
+  it("POST /api/recommendation-actions persists adopted and cleared swap state", async () => {
+    const wallet = randomWallet();
+    const user = await prismaModule.prisma.user.create({
+      data: { walletAddress: wallet, greenScore: 71 },
+    });
+    await prismaModule.prisma.recommendationRun.create({
+      data: {
+        userId: user.id,
+        walletAddress: wallet,
+        categoriesRequested: [EmissionCategory.GROCERIES],
+        suggestions: [
+          {
+            currentCategory: EmissionCategory.GROCERIES,
+            currentDescription: "Brand-name granola",
+            currentCo2eMonthly: 980,
+            alternativeDescription: "Bulk-bin granola",
+            alternativeCo2eMonthly: 520,
+            co2eSavingsMonthly: 460,
+            priceDifferenceUsd: -0.85,
+            difficulty: "easy",
+          },
+        ],
+        totalPotentialSavingsMonthly: 460,
+        narratorProvider: "openai",
+        model: "gpt-5.4-mini",
+        promptHash: "recommendation-action-test",
+      },
+    });
+
+    const adoptedResponse = await requestJson(
+      recommendationActionsRouteModule.recommendationActionsRouter,
+      {
+        method: "POST",
+        path: "/",
+        body: {
+          wallet,
+          suggestionKey: "groceries::adopt-me",
+          action: "adopted",
+        },
+      }
+    );
+
+    assert.equal(adoptedResponse.status, 200);
+    assert.equal(adoptedResponse.body.action, "adopted");
+
+    const adoptedState = await requestJson(walletStateRouteModule.walletStateRouter, {
+      method: "GET",
+      path: `/?wallet=${wallet}`,
+    });
+    assert.deepEqual(adoptedState.body.adoptedSuggestionKeys, [
+      "groceries::adopt-me",
+    ]);
+
+    const clearedResponse = await requestJson(
+      recommendationActionsRouteModule.recommendationActionsRouter,
+      {
+        method: "POST",
+        path: "/",
+        body: {
+          wallet,
+          suggestionKey: "groceries::adopt-me",
+          action: "cleared",
+        },
+      }
+    );
+
+    assert.equal(clearedResponse.status, 200);
+    assert.equal(clearedResponse.body.action, "cleared");
+
+    const clearedState = await requestJson(walletStateRouteModule.walletStateRouter, {
+      method: "GET",
+      path: `/?wallet=${wallet}`,
+    });
+    assert.deepEqual(clearedState.body.adoptedSuggestionKeys, []);
   });
 
   it("GET /api/nft-metadata returns 404 for an unknown wallet and metadata for a known one", async () => {

@@ -13,7 +13,7 @@ analyzeTransactionsRouter.post("/", async (req: Request, res: Response) => {
   try {
     const request = AnalyzeTransactionsRequestSchema.parse(req.body);
     const response = AnalyzeTransactionsResponseSchema.parse(
-      emissionsService.analyzeTransactions(request)
+      await emissionsService.analyzeTransactions(request)
     );
     await persistAnalyzedTransactions({
       wallet: request.wallet,

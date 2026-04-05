@@ -27,6 +27,8 @@ import {
   SwapSuggestionsRequestSchema,
   SwapSuggestionSchema,
   SwapSuggestionsResponseSchema,
+  RecommendationActionRequestSchema,
+  RecommendationActionResponseSchema,
 
   // Trigger Offset
   TriggerOffsetRequestSchema,
@@ -44,11 +46,21 @@ import {
   SimulateStakeResponseSchema,
   StakeRequestSchema,
   StakeResponseSchema,
+  StakeSettlementSourceSchema,
+  StakeCollectRequestSchema,
+  StakeCollectResponseSchema,
+  StakeWithdrawRequestSchema,
+  StakeWithdrawResponseSchema,
+  SimulateStakeTimelineRequestSchema,
+  SimulateStakeTimelineEventSchema,
+  SimulateStakeTimelinePointSchema,
+  SimulateStakeTimelineResponseSchema,
 
   // Leaderboard
   LeaderboardRequestSchema,
   LeaderboardEntrySchema,
   LeaderboardResponseSchema,
+  WalletStateResponseSchema,
 
   // NFT
   NftAttributeSchema,
@@ -79,6 +91,8 @@ export type GreenScoreResponse = z.infer<typeof GreenScoreResponseSchema>;
 export type SwapSuggestionsRequest = z.infer<typeof SwapSuggestionsRequestSchema>;
 export type SwapSuggestion = z.infer<typeof SwapSuggestionSchema>;
 export type SwapSuggestionsResponse = z.infer<typeof SwapSuggestionsResponseSchema>;
+export type RecommendationActionRequest = z.infer<typeof RecommendationActionRequestSchema>;
+export type RecommendationActionResponse = z.infer<typeof RecommendationActionResponseSchema>;
 
 // ─── Trigger Offset ─────────────────────────────────────────────────────────
 
@@ -99,12 +113,30 @@ export type SimulateStakeRequest = z.infer<typeof SimulateStakeRequestSchema>;
 export type SimulateStakeResponse = z.infer<typeof SimulateStakeResponseSchema>;
 export type StakeRequest = z.infer<typeof StakeRequestSchema>;
 export type StakeResponse = z.infer<typeof StakeResponseSchema>;
+export type StakeSettlementSource = z.infer<typeof StakeSettlementSourceSchema>;
+export type StakeCollectRequest = z.infer<typeof StakeCollectRequestSchema>;
+export type StakeCollectResponse = z.infer<typeof StakeCollectResponseSchema>;
+export type StakeWithdrawRequest = z.infer<typeof StakeWithdrawRequestSchema>;
+export type StakeWithdrawResponse = z.infer<typeof StakeWithdrawResponseSchema>;
+export type SimulateStakeTimelineRequest = z.infer<
+  typeof SimulateStakeTimelineRequestSchema
+>;
+export type SimulateStakeTimelineEvent = z.infer<
+  typeof SimulateStakeTimelineEventSchema
+>;
+export type SimulateStakeTimelinePoint = z.infer<
+  typeof SimulateStakeTimelinePointSchema
+>;
+export type SimulateStakeTimelineResponse = z.infer<
+  typeof SimulateStakeTimelineResponseSchema
+>;
 
 // ─── Leaderboard ────────────────────────────────────────────────────────────
 
 export type LeaderboardRequest = z.infer<typeof LeaderboardRequestSchema>;
 export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
 export type LeaderboardResponse = z.infer<typeof LeaderboardResponseSchema>;
+export type WalletStateResponse = z.infer<typeof WalletStateResponseSchema>;
 
 // ─── NFT ────────────────────────────────────────────────────────────────────
 

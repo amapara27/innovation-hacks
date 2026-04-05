@@ -44,6 +44,18 @@ export const API_ROUTES = {
     owner: "ai" as const,
   },
 
+  RECOMMENDATION_ACTIONS: {
+    path: "/api/recommendation-actions",
+    method: "POST" as const,
+    owner: "ai" as const,
+  },
+
+  WALLET_STATE: {
+    path: "/api/wallet-state",
+    method: "GET" as const,
+    owner: "shared" as const,
+  },
+
   /** Offset Agent: decide credit type + amount, mock Toucan purchase. */
   TRIGGER_OFFSET: {
     path: "/api/trigger-offset",
@@ -74,9 +86,30 @@ export const API_ROUTES = {
     owner: "blockchain" as const,
   },
 
+  /** Simulate timeline impact from sustained low Green Scores. */
+  SIMULATE_STAKE_TIMELINE: {
+    path: "/api/simulate-stake-timeline",
+    method: "POST" as const,
+    owner: "blockchain" as const,
+  },
+
   /** Execute a real demo stake transfer on devnet. */
   STAKE: {
     path: "/api/stake",
+    method: "POST" as const,
+    owner: "blockchain" as const,
+  },
+
+  /** Collect accrued staking yield. */
+  STAKE_COLLECT: {
+    path: "/api/stake/collect",
+    method: "POST" as const,
+    owner: "blockchain" as const,
+  },
+
+  /** Withdraw staked principal. */
+  STAKE_WITHDRAW: {
+    path: "/api/stake/withdraw",
     method: "POST" as const,
     owner: "blockchain" as const,
   },

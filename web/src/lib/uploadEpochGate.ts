@@ -32,6 +32,21 @@ export function isUploadRefreshRequired(wallet: string | null): boolean {
   return Date.now() - lastUploadTimestamp >= UPLOAD_REFRESH_WINDOW_MS;
 }
 
+export function isUploadRefreshRequiredForTimestamp(
+  timestamp: string | null | undefined
+): boolean {
+  if (!timestamp) {
+    return true;
+  }
+
+  const parsedTimestamp = Date.parse(timestamp);
+  if (!Number.isFinite(parsedTimestamp)) {
+    return true;
+  }
+
+  return Date.now() - parsedTimestamp >= UPLOAD_REFRESH_WINDOW_MS;
+}
+
 export function markUploadCompleted(wallet: string, connectedAt?: string): void {
   if (!wallet || typeof window === "undefined") {
     return;

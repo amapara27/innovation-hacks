@@ -28,14 +28,19 @@ nftMetadataRouter.get("/", async (req: Request, res: Response) => {
       wallet: req.query.wallet,
     });
 
-    const user = await prisma.user.findUnique({
+    const user = (await prisma.user.findUnique({
       where: { walletAddress: wallet },
       include: {
         impacts: {
           select: { co2OffsetGrams: true, creditType: true },
         },
       },
-    });
+    })) as
+      | {
+          greenScore: number;
+          impacts: Array<{ co2OffsetGrams: number; creditType: string }>;
+        }
+      | null;
 
     if (!user) {
       res.status(404).json({ error: "User not found" });
@@ -43,13 +48,13 @@ nftMetadataRouter.get("/", async (req: Request, res: Response) => {
     }
 
     const totalCo2eOffset = user.impacts.reduce(
-      (sum, i) => sum + i.co2OffsetGrams,
+      (sum: number, i: { co2OffsetGrams: number }) => sum + i.co2OffsetGrams,
       0
     );
 
     // Find most common credit type
     const creditTypeCounts = user.impacts.reduce(
-      (acc, i) => {
+      (acc: Record<string, number>, i: { creditType: string }) => {
         acc[i.creditType] = (acc[i.creditType] || 0) + 1;
         return acc;
       },
@@ -57,7 +62,7 @@ nftMetadataRouter.get("/", async (req: Request, res: Response) => {
     );
     const primaryCreditType =
       Object.entries(creditTypeCounts).sort(
-        ([, a], [, b]) => b - a
+        ([, a], [, b]) => Number(b) - Number(a)
       )[0]?.[0] ?? "forestry";
 
     const score = clampGreenScore(user.greenScore);

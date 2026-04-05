@@ -146,17 +146,17 @@ export const KEYWORD_CATEGORY_MAP: ReadonlyArray<
 ];
 
 export const SUSTAINABILITY_POINTS: Record<EmissionCategoryValue, number> = {
-  [EmissionCategory.GROCERIES]: 85,
-  [EmissionCategory.HEALTH]: 80,
-  [EmissionCategory.ENTERTAINMENT]: 70,
-  [EmissionCategory.HOME]: 65,
-  [EmissionCategory.FOOD_DINING]: 55,
+  [EmissionCategory.GROCERIES]: 96,
+  [EmissionCategory.HEALTH]: 90,
+  [EmissionCategory.ENTERTAINMENT]: 74,
+  [EmissionCategory.HOME]: 84,
+  [EmissionCategory.FOOD_DINING]: 72,
   [EmissionCategory.OTHER]: 50,
-  [EmissionCategory.SHOPPING]: 45,
-  [EmissionCategory.UTILITIES]: 40,
-  [EmissionCategory.TRANSPORTATION]: 35,
-  [EmissionCategory.GAS_FUEL]: 20,
-  [EmissionCategory.TRAVEL]: 15,
+  [EmissionCategory.SHOPPING]: 42,
+  [EmissionCategory.UTILITIES]: 52,
+  [EmissionCategory.TRANSPORTATION]: 44,
+  [EmissionCategory.GAS_FUEL]: 18,
+  [EmissionCategory.TRAVEL]: 12,
 };
 
 export const ESSENTIAL_CATEGORIES = new Set<EmissionCategoryValue>([

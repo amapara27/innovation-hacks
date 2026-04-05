@@ -1,14 +1,22 @@
-import { type ChangeEvent, useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Link } from "react-router-dom";
+import { Coins, Database, Globe, Landmark, TreePine, TrendingUp, Zap } from "lucide-react";
 import GreenScoreDisplay from "@/components/dashboard/GreenScoreDisplay";
 import CarbonFootprintChart from "@/components/dashboard/CarbonFootprintChart";
-import { useGreenScore } from "@/hooks/useGreenScore";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { useWalletState } from "@/hooks/useWalletState";
+import {
+  formatError,
+  formatKg,
+  requestJson,
+  type AnalyzeResponse,
+  type GreenScoreData,
+  type StakingInfoResponse,
+} from "@/lib/api";
 import { parseUploadFile, type DemoMode, type DemoTransactionInput } from "@/lib/demoBank";
-import { isUploadRefreshRequired, markUploadCompleted, uploadEpochGate } from "@/lib/uploadEpochGate";
-import { Coins, Database, Globe, Landmark, TreePine, TrendingUp, Zap } from "lucide-react";
+import { markUploadCompleted, uploadEpochGate, isUploadRefreshRequiredForTimestamp } from "@/lib/uploadEpochGate";
 
 interface DemoConnectBankResponse {
   wallet: string;
@@ -18,68 +26,15 @@ interface DemoConnectBankResponse {
   connectedAt: string;
 }
 
-interface AnalyzeResponse {
-  wallet: string;
-  transactionCount: number;
-  totalCo2eGrams: number;
-  transactions: Array<{
-    transactionId: string;
-    description: string;
-    amountUsd: number;
-    category: string;
-    co2eGrams: number;
-    date: string;
-  }>;
-}
-
-interface StakingInfoResponse {
-  wallet: string;
-  greenScore: number;
-  baseApy: number;
-  greenBonus: number;
-  effectiveApy: number;
-  stakedAmount: number;
-  accruedYield: number;
-  stakeVaultAddress?: string;
-}
-
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Unexpected error. Please try again.";
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    let message = `Request failed (${response.status})`;
-    try {
-      const body = await response.json();
-      if (typeof body?.error === "string") {
-        message = body.error;
-      }
-    } catch {
-      // fallback message
-    }
-    throw new Error(message);
-  }
-  return response.json() as Promise<T>;
-}
-
-function hasNonSeededTransactions(response: AnalyzeResponse): boolean {
-  if (response.transactionCount <= 0) {
-    return false;
-  }
-  return response.transactions.some(
-    (transaction) => !transaction.transactionId.startsWith("seeded_")
-  );
-}
-
 export default function Dashboard() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
-  const { data: greenScore, refetch: refetchGreenScore } = useGreenScore(wallet);
+  const {
+    data: walletState,
+    isLoading: isHydratingState,
+    error: walletStateError,
+    refetch: refetchWalletState,
+  } = useWalletState(wallet);
 
   const [uploadedTransactions, setUploadedTransactions] =
     useState<DemoTransactionInput[] | null>(null);
@@ -87,37 +42,70 @@ export default function Dashboard() {
   const [bankConnectResult, setBankConnectResult] =
     useState<DemoConnectBankResponse | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
+  const [greenScore, setGreenScore] = useState<GreenScoreData | null>(null);
   const [stakingInfo, setStakingInfo] = useState<StakingInfoResponse | null>(null);
   const [isConnectingBank, setIsConnectingBank] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isCheckingTransactions, setIsCheckingTransactions] = useState(false);
-  const [hasBankTransactions, setHasBankTransactions] = useState<boolean | null>(null);
-  const [uploadRefreshRequired, setUploadRefreshRequired] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const latestRecommendations = walletState?.latestRecommendations ?? null;
+
+  useEffect(() => {
+    setAnalysisResult(walletState?.analysis ?? null);
+    setGreenScore(walletState?.greenScore ?? null);
+    setStakingInfo(walletState?.stakingInfo ?? null);
+  }, [walletState]);
+
+  useEffect(() => {
+    if (!wallet) {
+      setUploadedTransactions(null);
+      setUploadSummary("");
+      setBankConnectResult(null);
+      setAnalysisResult(null);
+      setGreenScore(null);
+      setStakingInfo(null);
+      setMessage("");
+      setError("");
+    }
+  }, [wallet]);
+
+  const uploadRefreshRequired = useMemo(
+    () => isUploadRefreshRequiredForTimestamp(walletState?.latestUploadAt),
+    [walletState?.latestUploadAt]
+  );
+
+  const hasUploadedTransactions = walletState?.hasUploadedTransactions ?? false;
   const hasStakePosition = (stakingInfo?.stakedAmount ?? 0) > 0;
   const dashboardLocked =
-    Boolean(wallet) && (hasBankTransactions === false || uploadRefreshRequired);
+    Boolean(wallet) &&
+    !isHydratingState &&
+    (!hasUploadedTransactions || uploadRefreshRequired);
   const stakingMultiplier =
     stakingInfo && stakingInfo.baseApy > 0
       ? stakingInfo.effectiveApy / stakingInfo.baseApy
       : null;
+  const potentialMonthlyCostSavings = useMemo(
+    () =>
+      latestRecommendations?.suggestions.reduce(
+        (sum, suggestion) => sum + Math.max(0, -suggestion.priceDifferenceUsd),
+        0
+      ) ?? 0,
+    [latestRecommendations]
+  );
 
   const tickerStats = [
     {
       label: "Total CO₂ Emissions",
-      value: analysisResult
-        ? `${(analysisResult.totalCo2eGrams / 1000).toFixed(2)} kg`
-        : "—",
+      value: analysisResult ? formatKg(analysisResult.totalCo2eGrams) : "—",
       icon: TreePine,
-      change: analysisResult ? "From connected bank feed" : "Connect bank to load data",
+      change: analysisResult ? "From uploaded transactions" : "Upload transactions to load data",
     },
     {
       label: "Transactions Analyzed",
       value: `${analysisResult?.transactionCount ?? 0}`,
       icon: Zap,
-      change: analysisResult ? "Latest analysis run" : "Awaiting analysis",
+      change: analysisResult ? "Stored in Mongo and restored on reload" : "Awaiting upload",
     },
     {
       label: "Global Rank",
@@ -125,84 +113,19 @@ export default function Dashboard() {
       icon: Globe,
       change: greenScore?.totalUsers
         ? `of ${greenScore.totalUsers} users`
-        : "Refresh score to update",
+        : "Refresh performance to update",
     },
     {
       label: "Effective Staking APY",
       value: stakingInfo ? `${stakingInfo.effectiveApy.toFixed(2)}%` : "—",
       icon: TrendingUp,
-      change: "Based on latest green score",
+      change: "Based on your latest green score",
       accentChange:
         stakingInfo && stakingMultiplier
           ? `Booster +${stakingInfo.greenBonus.toFixed(2)}% (${stakingMultiplier.toFixed(2)}x)`
           : null,
     },
   ];
-
-  useEffect(() => {
-    if (!wallet) {
-      setStakingInfo(null);
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const stakeInfo = await requestJson<StakingInfoResponse>(
-          `/api/staking-info?wallet=${wallet}`
-        );
-        if (!cancelled) {
-          setStakingInfo(stakeInfo);
-        }
-      } catch {
-        if (!cancelled) {
-          setStakingInfo(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [wallet]);
-
-  useEffect(() => {
-    if (!wallet) {
-      setUploadRefreshRequired(false);
-      setHasBankTransactions(null);
-      setIsCheckingTransactions(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsCheckingTransactions(true);
-    void (async () => {
-      try {
-        const response = await requestJson<AnalyzeResponse>("/api/analyze-transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wallet, limit: 1 }),
-        });
-        if (!cancelled) {
-          setHasBankTransactions(hasNonSeededTransactions(response));
-          setUploadRefreshRequired(isUploadRefreshRequired(wallet));
-        }
-      } catch {
-        if (!cancelled) {
-          setHasBankTransactions(false);
-          setUploadRefreshRequired(true);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsCheckingTransactions(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [wallet]);
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -230,31 +153,29 @@ export default function Dashboard() {
     }
 
     if (!uploadedTransactions) {
-      setError("Upload a JSON or CSV file before connecting.");
+      setError("Upload a JSON or CSV file before continuing.");
       return;
     }
 
     setError("");
     setMessage("");
     setIsConnectingBank(true);
+
     try {
-      const payload = { wallet, mode: "upload", transactions: uploadedTransactions };
-      const response = await requestJson<DemoConnectBankResponse>(
-        "/api/demo/connect-bank",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const response = await requestJson<DemoConnectBankResponse>("/api/demo/connect-bank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet,
+          mode: "upload",
+          transactions: uploadedTransactions,
+        }),
+      });
+
       setBankConnectResult(response);
-      setAnalysisResult(null);
-      if (response.transactionCount > 0) {
-        setHasBankTransactions(true);
-        markUploadCompleted(wallet, response.connectedAt);
-        setUploadRefreshRequired(false);
-      }
-      setMessage(`Bank connected via ${response.sourceLabel}.`);
+      markUploadCompleted(wallet, response.connectedAt);
+      await refetchWalletState();
+      setMessage(`Uploaded ${response.transactionCount} transactions from ${response.sourceLabel}.`);
     } catch (connectError) {
       setError(formatError(connectError));
     } finally {
@@ -271,15 +192,16 @@ export default function Dashboard() {
     setError("");
     setMessage("");
     setIsAnalyzing(true);
+
     try {
       const response = await requestJson<AnalyzeResponse>("/api/analyze-transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wallet, limit: 20 }),
       });
+
       setAnalysisResult(response);
-      setHasBankTransactions(hasNonSeededTransactions(response));
-      setMessage(`Analyzed ${response.transactionCount} transactions.`);
+      setMessage(`Refreshed ${response.transactionCount} analyzed transactions.`);
     } catch (analysisError) {
       setError(formatError(analysisError));
     } finally {
@@ -296,12 +218,18 @@ export default function Dashboard() {
     setError("");
     setMessage("");
     setIsRefreshing(true);
+
     try {
-      const [, stakeInfo] = await Promise.all([
-        refetchGreenScore(),
-        requestJson<StakingInfoResponse>(`/api/staking-info?wallet=${wallet}`),
+      const [scoreResponse, stakeInfo] = await Promise.all([
+        requestJson<GreenScoreData>(`/api/green-score?wallet=${encodeURIComponent(wallet)}`),
+        requestJson<StakingInfoResponse>(
+          `/api/staking-info?wallet=${encodeURIComponent(wallet)}`
+        ),
       ]);
+
+      setGreenScore(scoreResponse);
       setStakingInfo(stakeInfo);
+      await refetchWalletState();
       setMessage("Performance metrics refreshed.");
     } catch (refreshError) {
       setError(formatError(refreshError));
@@ -317,7 +245,7 @@ export default function Dashboard() {
           Dashboard
         </h1>
         <p className="text-stone-400 text-base tracking-wide">
-          Track your personal performance, then keep improving it over time.
+          Your uploads, analysis, score, and staking state now hydrate automatically.
         </p>
       </div>
 
@@ -332,25 +260,34 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {wallet && isCheckingTransactions && (
+      {wallet && isHydratingState && (
         <Card>
           <CardHeader>
-            <CardTitle>Checking Bank Transactions</CardTitle>
+            <CardTitle>Loading Uploaded Transactions</CardTitle>
             <CardDescription>
-              Verifying whether your wallet already has transactions in the database.
+              Restoring your latest analysis, score, and staking state from Mongo.
             </CardDescription>
           </CardHeader>
         </Card>
       )}
 
-      {wallet && !isCheckingTransactions && dashboardLocked && (
+      {wallet && walletStateError && !isHydratingState && (
         <Card>
           <CardHeader>
-            <CardTitle>Upload Required Before Dashboard Access</CardTitle>
+            <CardTitle>State Load Error</CardTitle>
+            <CardDescription>{walletStateError}</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {wallet && !isHydratingState && dashboardLocked && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Upload Transactions Before Dashboard Access</CardTitle>
             <CardDescription>
-              {hasBankTransactions === false
-                ? "No bank transactions were found for this wallet. Upload a transaction file to unlock your dashboard."
-                : `Recent transactions must be re-uploaded every ${uploadEpochGate.refreshWindowDays} days (two epochs). Upload a new file to continue.`}
+              {!hasUploadedTransactions
+                ? "No uploaded transactions were found for this wallet. Add a transaction file to unlock your dashboard."
+                : `Your last upload is older than ${uploadEpochGate.refreshWindowDays} days. Upload a fresh file to keep your dashboard current.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -364,7 +301,7 @@ export default function Dashboard() {
               {uploadSummary && <p className="text-xs text-stone-500">{uploadSummary}</p>}
             </div>
             <Button
-              onClick={() => handleConnectBank()}
+              onClick={handleConnectBank}
               disabled={isConnectingBank || !uploadedTransactions}
             >
               {isConnectingBank ? "Uploading..." : "Upload Transactions + Unlock"}
@@ -375,9 +312,8 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {wallet && !isCheckingTransactions && !dashboardLocked && (
+      {wallet && !isHydratingState && !dashboardLocked && (
         <>
-
           <div className="flex flex-col lg:flex-row gap-6">
             <div className="lg:w-[45.83%]">
               <GreenScoreDisplay
@@ -397,9 +333,7 @@ export default function Dashboard() {
                             {stakingInfo ? `${stakingInfo.stakedAmount.toFixed(4)} SOL` : "—"}
                           </p>
                           <p className="text-xs text-stone-500">
-                            {hasStakePosition
-                              ? "Current principal in stake vault"
-                              : "No active stake yet"}
+                            {hasStakePosition ? "Current principal in stake vault" : "No active stake yet"}
                           </p>
                         </div>
                       </div>
@@ -418,9 +352,7 @@ export default function Dashboard() {
                             {stakingInfo ? `${stakingInfo.accruedYield.toFixed(6)} SOL` : "—"}
                           </p>
                           <p className="text-xs text-stone-500">
-                            {hasStakePosition
-                              ? "Yield earned to date"
-                              : "Stake to start accruing rewards"}
+                            {hasStakePosition ? "Yield earned to date" : "Stake to start accruing rewards"}
                           </p>
                         </div>
                       </div>
@@ -433,6 +365,7 @@ export default function Dashboard() {
                 }
               />
             </div>
+
             <div className="lg:w-[54.17%] flex flex-col gap-3">
               {tickerStats.map((stat) => (
                 <div
@@ -446,26 +379,26 @@ export default function Dashboard() {
                     <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">
                       {stat.label}
                     </p>
-                <p className="text-2xl font-display font-bold text-stone-100 tracking-tight">
-                  {stat.value}
-                </p>
-                <p className="text-xs text-stone-500">
-                  {stat.change}
-                  {"accentChange" in stat && stat.accentChange ? (
-                    <span className="ml-1.5 font-semibold text-solar-400">
-                      {stat.accentChange}
-                    </span>
-                  ) : null}
-                </p>
-              </div>
-            </div>
-          ))}
+                    <p className="text-2xl font-display font-bold text-stone-100 tracking-tight">
+                      {stat.value}
+                    </p>
+                    <p className="text-xs text-stone-500">
+                      {stat.change}
+                      {"accentChange" in stat && stat.accentChange ? (
+                        <span className="ml-1.5 font-semibold text-solar-400">
+                          {stat.accentChange}
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                </div>
+              ))}
 
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Database className="h-5 w-5 text-forest-400" />
-                    Bank Connect + Analysis
+                    Upload Transactions + Analysis
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -486,10 +419,10 @@ export default function Dashboard() {
                       <Button
                         size="sm"
                         onClick={handleConnectBank}
-                        disabled={isConnectingBank}
+                        disabled={isConnectingBank || !uploadedTransactions}
                         className="w-full"
                       >
-                        {isConnectingBank ? "Connecting..." : "Connect Bank"}
+                        {isConnectingBank ? "Uploading..." : "Upload Transactions"}
                       </Button>
                       <Button
                         size="sm"
@@ -498,7 +431,7 @@ export default function Dashboard() {
                         disabled={isAnalyzing}
                         className="w-full"
                       >
-                        {isAnalyzing ? "Analyzing..." : "Analyze Transactions"}
+                        {isAnalyzing ? "Refreshing..." : "Refresh Analysis"}
                       </Button>
                       <Button
                         size="sm"
@@ -512,10 +445,18 @@ export default function Dashboard() {
                     </div>
                   </div>
 
+                  {walletState?.latestUploadAt && (
+                    <div className="rounded-lg border border-stone-800 bg-surface-900/35 px-3 py-2">
+                      <p className="text-xs text-stone-400">
+                        Latest upload: {new Date(walletState.latestUploadAt).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+
                   {bankConnectResult && (
                     <div className="rounded-lg border border-forest-700/30 bg-forest-700/10 px-3 py-2">
                       <p className="text-xs text-forest-300">
-                        Connected source: {bankConnectResult.sourceLabel} ({bankConnectResult.transactionCount} transactions)
+                        Uploaded source: {bankConnectResult.sourceLabel} ({bankConnectResult.transactionCount} transactions)
                       </p>
                     </div>
                   )}
@@ -535,44 +476,91 @@ export default function Dashboard() {
             </div>
           </div>
 
+          <div>
+            <CarbonFootprintChart />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Swap Potential Snapshot</CardTitle>
+              <CardDescription>
+                Latest saved product alternatives from your uploaded spending profile.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-stone-800/70 bg-surface-900/35 p-4">
+                <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">
+                  Potential CO₂ Reduction
+                </p>
+                <p className="mt-2 text-2xl font-display font-bold text-forest-300 tracking-tight">
+                  {latestRecommendations
+                    ? `${formatKg(latestRecommendations.totalPotentialSavingsMonthly)}/month`
+                    : "—"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {latestRecommendations
+                    ? `${latestRecommendations.suggestions.length} saved swap suggestions ready to review`
+                    : "Generate product swaps to surface savings here."}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-stone-800/70 bg-surface-900/35 p-4">
+                <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">
+                  Estimated Monthly Savings
+                </p>
+                <p className="mt-2 text-2xl font-display font-bold text-solar-400 tracking-tight">
+                  {latestRecommendations ? `$${potentialMonthlyCostSavings.toFixed(2)}` : "—"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Sum of the cheaper saved alternatives in your latest recommendation set.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
           {analysisResult && (
             <Card>
               <CardHeader>
-                <CardTitle>Loaded Transactions</CardTitle>
+                <CardTitle>Uploaded Transactions</CardTitle>
+                <CardDescription>
+                  Scroll the ledger here without letting the upload view take over the whole dashboard.
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-stone-400 border-b border-stone-800">
-                        <th className="py-2 pr-3">Description</th>
-                        <th className="py-2 pr-3">Amount</th>
-                        <th className="py-2 pr-3">Category</th>
-                        <th className="py-2 pr-3">CO₂e (g)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analysisResult.transactions.map((transaction) => (
-                        <tr
-                          key={transaction.transactionId}
-                          className="border-b border-stone-900 text-stone-300"
-                        >
-                          <td className="py-2 pr-3">{transaction.description}</td>
-                          <td className="py-2 pr-3">${transaction.amountUsd.toFixed(2)}</td>
-                          <td className="py-2 pr-3">{transaction.category}</td>
-                          <td className="py-2 pr-3">{transaction.co2eGrams.toFixed(2)}</td>
+                <div className="rounded-xl border border-stone-800/70 bg-surface-950/50">
+                  <div className="grid grid-cols-2 gap-3 border-b border-stone-800/70 px-4 py-3 text-xs uppercase tracking-[0.2em] text-stone-500">
+                    <div>{analysisResult.transactionCount} transactions</div>
+                    <div className="text-right">{formatKg(analysisResult.totalCo2eGrams)} total</div>
+                  </div>
+                  <div className="max-h-[26rem] overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="sticky top-0 text-left text-stone-400 border-b border-stone-800 bg-surface-950/95 backdrop-blur">
+                          <th className="px-4 py-3 pr-3">Description</th>
+                          <th className="px-4 py-3 pr-3">Amount</th>
+                          <th className="px-4 py-3 pr-3">Category</th>
+                          <th className="px-4 py-3 pr-3">CO₂e (kg)</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {analysisResult.transactions.map((transaction) => (
+                          <tr
+                            key={transaction.transactionId}
+                            className="border-b border-stone-900 text-stone-300 hover:bg-surface-900/35"
+                          >
+                            <td className="px-4 py-3 pr-3">{transaction.description}</td>
+                            <td className="px-4 py-3 pr-3">${transaction.amountUsd.toFixed(2)}</td>
+                            <td className="px-4 py-3 pr-3">{transaction.category}</td>
+                            <td className="px-4 py-3 pr-3">{formatKg(transaction.co2eGrams, 3)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           )}
-
-          <div>
-            <CarbonFootprintChart />
-          </div>
         </>
       )}
     </div>

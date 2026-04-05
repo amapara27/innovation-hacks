@@ -16,6 +16,7 @@ import {
   type RawTransaction,
 } from "../lib/aiRules.js";
 import { roundTo } from "../lib/aiMath.js";
+import { spendEmissionsProvider } from "./spendEmissionsProvider.js";
 import { transactionProvider } from "./transactionProviderService.js";
 
 function emptyCategoryTotals(): Record<EmissionCategoryValue, number> {
@@ -47,13 +48,18 @@ class EmissionsService {
     return "other";
   }
 
-  private buildSnapshot(
+  private async buildSnapshot(
     wallet: string,
     limit: number,
     plaidAccessToken?: string
-  ): AnalysisSnapshot {
-    const ledger = transactionProvider.getTransactions(wallet, plaidAccessToken);
-    const selected = ledger.slice(0, limit);
+  ): Promise<
+    AnalysisSnapshot & {
+      source: "upload" | "seeded";
+      sourceLabel?: string;
+    }
+  > {
+    const ledger = await transactionProvider.getTransactions(wallet, plaidAccessToken);
+    const selected = ledger.transactions.slice(0, limit);
 
     const categoryBreakdown = emptyCategoryTotals();
     const categorySpend = emptyCategoryTotals();
@@ -63,8 +69,12 @@ class EmissionsService {
 
     for (const rawTransaction of selected) {
       const category = this.classifyTransaction(rawTransaction);
-      const emissionFactor = EMISSION_FACTORS[category];
-      const co2eGrams = roundTo(rawTransaction.amountUsd * emissionFactor, 2);
+      const providerEstimate = await spendEmissionsProvider.estimate(rawTransaction);
+      const emissionFactor =
+        providerEstimate?.emissionFactor ?? EMISSION_FACTORS[category];
+      const co2eGrams =
+        providerEstimate?.co2eGrams ??
+        roundTo(rawTransaction.amountUsd * emissionFactor, 2);
 
       transactions.push({
         transactionId: rawTransaction.transactionId,
@@ -104,12 +114,14 @@ class EmissionsService {
       totalCo2eGrams,
       categorySpendTotals: categorySpend,
       categoryEmissionTotals: categoryBreakdown,
+      source: ledger.source,
+      sourceLabel: ledger.sourceLabel,
     };
   }
 
-  analyzeTransactions(
+  async analyzeTransactions(
     rawRequest: AnalyzeTransactionsRequest
-  ): AnalyzeTransactionsResponse {
+  ): Promise<AnalyzeTransactionsResponse> {
     const request = AnalyzeTransactionsRequestSchema.parse(rawRequest);
     const cacheKey = this.getCacheKey(
       request.wallet,
@@ -121,7 +133,7 @@ class EmissionsService {
       return structuredClone(cached);
     }
 
-    const snapshot = this.buildSnapshot(
+    const snapshot = await this.buildSnapshot(
       request.wallet,
       request.limit,
       request.plaidAccessToken
@@ -130,8 +142,15 @@ class EmissionsService {
     return structuredClone(snapshot.response);
   }
 
-  getCanonicalSnapshot(wallet: string): AnalysisSnapshot {
-    return this.buildSnapshot(wallet, DEFAULT_TRANSACTION_LIMIT);
+  async getCanonicalSnapshot(wallet: string): Promise<AnalysisSnapshot> {
+    const snapshot = await this.buildSnapshot(wallet, DEFAULT_TRANSACTION_LIMIT);
+    return {
+      response: snapshot.response,
+      totalSpendUsd: snapshot.totalSpendUsd,
+      totalCo2eGrams: snapshot.totalCo2eGrams,
+      categorySpendTotals: snapshot.categorySpendTotals,
+      categoryEmissionTotals: snapshot.categoryEmissionTotals,
+    };
   }
 
   clearWalletCache(wallet: string): void {

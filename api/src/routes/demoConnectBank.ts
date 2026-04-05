@@ -7,13 +7,22 @@ import {
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 import { demoBankLedgerService } from "../services/demoBankLedgerService.js";
 import { emissionsService } from "../services/emissionsService.js";
-import { persistAnalyzedTransactions } from "../services/walletDataService.js";
+import {
+  markLatestUpload,
+  persistAnalyzedTransactions,
+} from "../services/walletDataService.js";
+import { refreshStoredGreenScore } from "../services/greenScoreService.js";
 
 export const demoConnectBankRouter = Router();
 
 demoConnectBankRouter.post("/", async (req: Request, res: Response) => {
   try {
     const request = DemoConnectBankRequestSchema.parse(req.body);
+    const connectedAt = new Date().toISOString();
+    const internalSourceLabel =
+      request.mode === "preset"
+        ? `preset:${request.scenario}:${connectedAt}`
+        : `upload:${connectedAt}`;
 
     const connectedTransactions =
       request.mode === "preset"
@@ -21,16 +30,19 @@ demoConnectBankRouter.post("/", async (req: Request, res: Response) => {
         : demoBankLedgerService.connectUpload(request.wallet, request.transactions!);
 
     emissionsService.clearWalletCache(request.wallet);
-    const analysis = emissionsService.analyzeTransactions({
+    const analysis = await emissionsService.analyzeTransactions({
       wallet: request.wallet,
       limit: DEFAULT_TRANSACTION_LIMIT,
     });
     await persistAnalyzedTransactions({
       wallet: request.wallet,
       response: analysis,
-      sourceLabel:
-        request.mode === "preset" ? `preset:${request.scenario}` : "upload",
+      sourceLabel: internalSourceLabel,
     });
+    if (request.mode === "upload") {
+      await markLatestUpload(request.wallet, connectedAt, internalSourceLabel);
+    }
+    await refreshStoredGreenScore(request.wallet);
 
     const response = DemoConnectBankResponseSchema.parse({
       wallet: request.wallet,
@@ -38,7 +50,7 @@ demoConnectBankRouter.post("/", async (req: Request, res: Response) => {
       sourceLabel:
         request.mode === "preset" ? `preset:${request.scenario}` : "upload",
       transactionCount: connectedTransactions.length,
-      connectedAt: new Date().toISOString(),
+      connectedAt,
     });
 
     res.json(response);

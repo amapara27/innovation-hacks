@@ -13,6 +13,7 @@ import {
 import { clampNumber, roundTo } from "../lib/aiMath.js";
 import { prisma } from "../lib/prisma.js";
 import { emissionsService } from "./emissionsService.js";
+import { buildRankedLeaderboardEntries } from "./leaderboardService.js";
 import {
   applyBehaviorPenalty,
   enforceLowScoreYieldReset,
@@ -33,8 +34,8 @@ export function computeWeightedScore(
 export async function refreshStoredGreenScore(
   wallet: string
 ): Promise<GreenScoreResponse> {
-  const snapshot = emissionsService.getCanonicalSnapshot(wallet);
-  const confirmedOffsets = await prisma.impactRecord.findMany({
+  const snapshot = await emissionsService.getCanonicalSnapshot(wallet);
+  const confirmedOffsets = (await prisma.impactRecord.findMany({
     where: {
       walletAddress: wallet,
       status: OffsetStatus.RECORDED_ON_CHAIN,
@@ -42,10 +43,11 @@ export async function refreshStoredGreenScore(
     select: {
       co2OffsetGrams: true,
     },
-  });
+  })) as Array<{ co2OffsetGrams: number }>;
 
   const confirmedOffsetGrams = confirmedOffsets.reduce(
-    (sum, offset) => sum + offset.co2OffsetGrams,
+    (sum: number, offset: { co2OffsetGrams: number }) =>
+      sum + offset.co2OffsetGrams,
     0
   );
   const offsetCount = confirmedOffsets.length;
@@ -56,7 +58,7 @@ export async function refreshStoredGreenScore(
 
   if (snapshot.totalSpendUsd > 0) {
     const intensity = snapshot.totalCo2eGrams / snapshot.totalSpendUsd;
-    transactionEfficiency = clampNumber((100 * (400 - intensity)) / 325, 0, 100);
+    transactionEfficiency = clampNumber((100 * (520 - intensity)) / 420, 0, 100);
 
     let weightedPoints = 0;
     let essentialSpend = 0;
@@ -162,19 +164,33 @@ export async function refreshStoredGreenScore(
     score,
   });
 
-  const totalUsers = await prisma.user.count({
+  const leaderboardUsers = (await prisma.user.findMany({
     where: { greenScore: { gt: 0 } },
-  });
-  const higherScores = await prisma.user.count({
-    where: { greenScore: { gt: score } },
-  });
+    select: {
+      walletAddress: true,
+      greenScore: true,
+      totalCo2eOffset: true,
+    },
+  })) as Array<{
+    walletAddress: string;
+    greenScore: number;
+    totalCo2eOffset?: number | null;
+  }>;
+  const rankedEntries = buildRankedLeaderboardEntries(
+    leaderboardUsers.map((leaderboardUser) => ({
+      wallet: leaderboardUser.walletAddress,
+      score: clampGreenScore(leaderboardUser.greenScore),
+      totalCo2eOffset: leaderboardUser.totalCo2eOffset ?? 0,
+    }))
+  );
+  const placement = rankedEntries.find((entry) => entry.wallet === wallet);
 
   return {
     wallet,
     score,
     tier,
     breakdown,
-    rank: totalUsers > 0 ? higherScores + 1 : undefined,
-    totalUsers: totalUsers || undefined,
+    rank: placement?.rank,
+    totalUsers: rankedEntries.length || undefined,
   };
 }

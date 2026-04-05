@@ -80,9 +80,9 @@ export default function Sidebar() {
       </nav>
 
       {/* Wallet */}
-      <div className={`p-4 border-t border-stone-800/80 ${!isExpanded && "px-2"}`}>
-        <WalletMultiButton className={`!w-full !rounded-lg !bg-surface-900/60 !border !border-stone-800 !text-sm !font-medium hover:!bg-surface-800 hover:!border-earth-600 !transition-all !duration-300 ${
-          isExpanded ? "!justify-center" : "!justify-center !px-2"
+      <div className={`pb-8 pt-5 border-t border-stone-800/80 ${isExpanded ? "px-4" : "px-2.5"}`}>
+        <WalletMultiButton className={`!min-h-[52px] !w-full !rounded-xl !bg-surface-900/60 !border !border-stone-800 !text-sm !font-medium hover:!bg-surface-800 hover:!border-earth-600 !transition-all !duration-300 ${
+          isExpanded ? "!justify-center !px-4" : "!justify-center !px-2"
         }`} />
       </div>
     </aside>
