@@ -39,8 +39,168 @@ class TemplateSuggestionNarrator {
   }
 }
 
+function normalizeNarrationText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function envFlag(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
+
+function stripMarkdownCodeFences(value: string): string {
+  const fenced = value.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced?.[1]?.trim() ?? value.trim();
+}
+
+function extractResponsesText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const output = (payload as { output?: unknown }).output;
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  const chunks: string[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const maybeMessage = item as { type?: unknown; content?: unknown };
+    if (maybeMessage.type !== "message" || !Array.isArray(maybeMessage.content)) {
+      continue;
+    }
+
+    for (const contentItem of maybeMessage.content) {
+      if (!contentItem || typeof contentItem !== "object") {
+        continue;
+      }
+
+      const maybeText = contentItem as { type?: unknown; text?: unknown };
+      if (
+        (maybeText.type === "output_text" || maybeText.type === "text") &&
+        typeof maybeText.text === "string"
+      ) {
+        chunks.push(maybeText.text);
+      }
+    }
+  }
+
+  return chunks.join("").trim();
+}
+
+function parseNarrationPayload(payloadText: string): SuggestionNarrativeText {
+  const parsed = JSON.parse(stripMarkdownCodeFences(payloadText)) as {
+    currentDescription?: unknown;
+    alternativeDescription?: unknown;
+  };
+
+  if (
+    typeof parsed.currentDescription !== "string" ||
+    typeof parsed.alternativeDescription !== "string"
+  ) {
+    throw new Error("Narration payload is missing required string fields");
+  }
+
+  return {
+    currentDescription: normalizeNarrationText(parsed.currentDescription),
+    alternativeDescription: normalizeNarrationText(parsed.alternativeDescription),
+  };
+}
+
+class OpenAISuggestionNarrator {
+  private readonly useOpenAi: boolean;
+  private readonly apiKey: string | undefined;
+  private readonly baseUrl: string;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+
+  constructor() {
+    this.useOpenAi =
+      envFlag("CARBONIQ_USE_OPENAI_RECOMMENDER") ||
+      envFlag("CARBONIQ_USE_OPENAI_NARRATOR");
+    this.apiKey = process.env.OPENAI_API_KEY;
+    this.baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(
+      /\/$/,
+      ""
+    );
+    this.model = process.env.CARBONIQ_OPENAI_MODEL || "gpt-5-mini";
+    this.timeoutMs = Math.max(
+      1_000,
+      Math.round(
+        Number(process.env.CARBONIQ_HTTP_TIMEOUT_SECONDS || "10") * 1_000
+      ) || 10_000
+    );
+  }
+
+  isConfigured(): boolean {
+    return this.useOpenAi && Boolean(this.apiKey);
+  }
+
+  async narrate(
+    suggestion: SuggestionNarrativeInput
+  ): Promise<SuggestionNarrativeText> {
+    if (!this.isConfigured() || !this.apiKey) {
+      throw new Error("OpenAI suggestion narrator is not configured");
+    }
+
+    const prompt = [
+      "You are a sustainability recommendation agent for consumer purchases.",
+      "Rewrite the current and alternative descriptions so they are concise and practical.",
+      "For the alternative description, include 1-2 concrete everyday lower-emission product or purchase alternatives when appropriate.",
+      "Keep category meaning, difficulty, and all numeric values unchanged.",
+      "Use plain language suitable for a fintech app.",
+      "Return strict JSON with keys: currentDescription, alternativeDescription.",
+      `category: ${suggestion.currentCategory}`,
+      `currentDescription: ${suggestion.currentDescription}`,
+      `alternativeDescription: ${suggestion.alternativeDescription}`,
+      `currentCo2eMonthly: ${suggestion.currentCo2eMonthly}`,
+      `alternativeCo2eMonthly: ${suggestion.alternativeCo2eMonthly}`,
+      `co2eSavingsMonthly: ${suggestion.co2eSavingsMonthly}`,
+      `priceDifferenceUsd: ${suggestion.priceDifferenceUsd}`,
+      `difficulty: ${suggestion.difficulty}`,
+    ].join("\n");
+
+    const response = await fetch(`${this.baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 220,
+      }),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `OpenAI narrator request failed (${response.status}): ${body.slice(0, 300)}`
+      );
+    }
+
+    const payload = (await response.json()) as unknown;
+    const text = extractResponsesText(payload);
+    if (!text) {
+      throw new Error("OpenAI narrator returned no text output");
+    }
+
+    return parseNarrationPayload(text);
+  }
+}
+
 class SuggestionsService {
-  private readonly narrator = new TemplateSuggestionNarrator();
+  private readonly templateNarrator = new TemplateSuggestionNarrator();
+  private readonly openAiNarrator = new OpenAISuggestionNarrator();
   private readonly narrationCache = new Map<string, SuggestionNarrativeText>();
 
   private rankCategories(
@@ -72,10 +232,10 @@ class SuggestionsService {
     return [...ranked, ...backfill].slice(0, SWAP_SUGGESTIONS_COUNT.max);
   }
 
-  private narrate(
+  private async narrate(
     wallet: string,
     suggestion: SuggestionNarrativeInput
-  ): SuggestionNarrativeText {
+  ): Promise<SuggestionNarrativeText> {
     const cacheKey = createHash("sha256")
       .update(
         [
@@ -94,14 +254,24 @@ class SuggestionsService {
       return cached;
     }
 
-    const narration = this.narrator.narrate(suggestion);
+    let narration = this.templateNarrator.narrate(suggestion);
+    if (this.openAiNarrator.isConfigured()) {
+      try {
+        narration = await this.openAiNarrator.narrate(suggestion);
+      } catch (error) {
+        console.warn(
+          "OpenAI suggestion narrator failed, falling back to template narration:",
+          error
+        );
+      }
+    }
     this.narrationCache.set(cacheKey, narration);
     return narration;
   }
 
-  getSwapSuggestions(
+  async getSwapSuggestions(
     request: SwapSuggestionsRequest
-  ): SwapSuggestionsResponse {
+  ): Promise<SwapSuggestionsResponse> {
     const snapshot = emissionsService.getCanonicalSnapshot(request.wallet);
     const rankedCategories = this.rankCategories(
       snapshot.categoryEmissionTotals,
@@ -122,7 +292,7 @@ class SuggestionsService {
         currentCo2eMonthly - alternativeCo2eMonthly,
         2
       );
-      const narration = this.narrate(request.wallet, {
+      const narration = await this.narrate(request.wallet, {
         currentCategory: category,
         currentDescription: rule.currentDescription,
         alternativeDescription: rule.alternativeDescription,

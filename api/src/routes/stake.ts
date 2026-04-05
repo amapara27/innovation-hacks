@@ -32,7 +32,7 @@ export function createStakeRouter(
       }
       console.error("Stake error:", err);
       res.status(500).json({
-        error: "Failed to execute demo stake",
+        error: "Failed to execute stake",
         details: err instanceof Error ? err.message : "Unknown error",
       });
     }

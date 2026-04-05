@@ -30,7 +30,7 @@ swapSuggestionsRouter.get("/", async (req: Request, res: Response) => {
     });
 
     const response = SwapSuggestionsResponseSchema.parse(
-      suggestionsService.getSwapSuggestions(request)
+      await suggestionsService.getSwapSuggestions(request)
     );
     res.json(response);
   } catch (err) {

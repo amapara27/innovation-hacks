@@ -30,7 +30,14 @@ export function computeGreenBonus(greenScore: number): number {
  * Compute the total effective APY (base + green bonus).
  */
 export function computeEffectiveApy(greenScore: number): number {
-  return STAKING_BASE_APY + computeGreenBonus(greenScore);
+  return computeEffectiveApyWithBase(greenScore, STAKING_BASE_APY);
+}
+
+export function computeEffectiveApyWithBase(
+  greenScore: number,
+  baseApy: number
+): number {
+  return baseApy + computeGreenBonus(greenScore);
 }
 
 /**
@@ -39,17 +46,18 @@ export function computeEffectiveApy(greenScore: number): number {
 export function simulateStake(
   principal: number,
   durationDays: number,
-  greenScore: number
+  greenScore: number,
+  baseApy: number = STAKING_BASE_APY
 ): SimulateStakeResponse {
   const greenBonus = computeGreenBonus(greenScore);
-  const effectiveApy = STAKING_BASE_APY + greenBonus;
+  const effectiveApy = baseApy + greenBonus;
   const estimatedYield =
     principal * (effectiveApy / 100) * (durationDays / 365);
 
   return {
     principal,
     durationDays,
-    baseApy: STAKING_BASE_APY,
+    baseApy: parseFloat(baseApy.toFixed(4)),
     greenBonus: parseFloat(greenBonus.toFixed(4)),
     effectiveApy: parseFloat(effectiveApy.toFixed(4)),
     estimatedYield: parseFloat(estimatedYield.toFixed(6)),

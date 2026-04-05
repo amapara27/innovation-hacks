@@ -13,6 +13,7 @@ import {
 } from "@carboniq/contracts";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
 import { simulateStake } from "../services/stakingService.js";
+import { getProtocolBaseApy } from "../services/stakingRateService.js";
 
 export const simulateStakeRouter = Router();
 
@@ -25,9 +26,10 @@ simulateStakeRouter.post("/", async (req: Request, res: Response) => {
     const { amount, durationDays, greenScore } = SimulateStakeRequestSchema.parse(
       req.body
     );
+    const baseApy = await getProtocolBaseApy();
 
     const result = SimulateStakeResponseSchema.parse(
-      simulateStake(amount, durationDays, greenScore)
+      simulateStake(amount, durationDays, greenScore, baseApy)
     );
     res.json(result);
   } catch (err) {

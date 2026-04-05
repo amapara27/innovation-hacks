@@ -17,7 +17,7 @@ This document is for the frontend/integration developer or their coding agent. I
 - Contract validation is in place on backend request and response boundaries.
 - Green Score, staking, leaderboard, NFT metadata, and offset history all use the same persisted user data in Prisma.
 - Offset recording writes to Solana devnet through the API server wallet.
-- Demo staking is now a real devnet SOL transfer to a configured vault address, also signed by the API server wallet.
+- Staking execution supports protocol-backed devnet staking via Marinade (default) with automatic fallback to demo transfer when configured.
 - Frontend does not need to sign Solana transactions for staking or offset recording in the current model.
 
 ## Main Backend Entry Points
@@ -27,7 +27,7 @@ This document is for the frontend/integration developer or their coding agent. I
 - Shared schemas/types: `contracts/src/schemas.ts`, `contracts/src/types.ts`, `contracts/src/index.ts`
 - Prisma data model: `api/prisma/schema.prisma`
 - Solana service: `api/src/services/solanaService.ts`
-- Live demo staking service: `api/src/services/stakeExecutionService.ts`
+- Live staking execution service: `api/src/services/stakeExecutionService.ts`
 - Offset recording service: `api/src/services/recordOffsetService.ts`
 - AI-triggered offset orchestration: `api/src/services/triggerOffsetService.ts`
 - Green Score persistence/service: `api/src/services/greenScoreService.ts`
@@ -108,8 +108,9 @@ Do not hardcode payload shapes in the frontend if you can avoid it.
 
 - `POST /api/stake`
   - Request: `{ wallet, amount, durationDays }`
-  - This is a real devnet demo transaction
-  - The API signer sends SOL from the configured payer wallet to the configured vault wallet
+  - This is a real devnet staking execution route
+  - Default behavior uses Marinade on devnet via the API signer wallet
+  - If Marinade execution fails and fallback is enabled, it falls back to a direct demo transfer to the configured vault wallet
   - Response includes:
     - `wallet`
     - `amount`
@@ -117,7 +118,7 @@ Do not hardcode payload shapes in the frontend if you can avoid it.
     - `greenScore`
     - `effectiveApy`
     - `estimatedYield`
-    - `vaultAddress`
+    - `vaultAddress` (backward-compatible destination field; protocol mode stores the destination token account address)
     - `solanaSignature`
     - `status`
 
@@ -130,7 +131,10 @@ Do not hardcode payload shapes in the frontend if you can avoid it.
     - `effectiveApy`
     - `stakedAmount`
     - `accruedYield`
-  - Important: this now aggregates only confirmed executed demo stake rows, not legacy simulated rows
+  - Important: this aggregates only confirmed executed stake rows, not legacy simulated rows
+  - Base APY is protocol-first:
+    - Uses Marinade-derived rolling APY from on-chain `mSOL` price snapshots when available
+    - Falls back to configured `MARINADE_HARDCODED_APY` if a rolling value is not yet computable
 
 ### Read-model endpoints
 
@@ -174,7 +178,7 @@ Prisma schema: `api/prisma/schema.prisma`
 - The frontend does not need to sign staking or offset transactions in the current model.
 - The API server is the authority signer for:
   - Anchor proof-of-impact writes
-  - Demo devnet staking transfers
+  - Devnet staking execution (Marinade protocol mode or demo transfer fallback)
 - `POST /api/trigger-offset` is the higher-level UX-friendly offset endpoint.
 - `POST /api/stake` is the higher-level staking execution endpoint.
 - `POST /api/simulate-stake` is still useful for previews before calling `POST /api/stake`.
@@ -185,7 +189,7 @@ Prisma schema: `api/prisma/schema.prisma`
 Live:
 
 - Solana proof-of-impact writes in `/api/record-offset`
-- Demo devnet staking transfer in `/api/stake`
+- Real staking execution in `/api/stake` (Marinade by default, demo transfer fallback supported)
 - Prisma persistence for users, impacts, stakes
 - Leaderboard and staking-info backed by DB state
 
@@ -229,6 +233,10 @@ Backend env file: `api/.env`
 - `SOLANA_PROGRAM_ID`
 - `SOLANA_PAYER_SECRET_KEY`
 - `SOLANA_STAKING_VAULT_ADDRESS`
+- `SOLANA_STAKING_PROVIDER` (`marinade`, `demo`, `jito`)
+- `SOLANA_STAKING_FALLBACK_TO_DEMO` (`true`/`false`)
+- `MARINADE_HARDCODED_APY` (default fallback base APY)
+- `STAKING_PROTOCOL_APY_WINDOW_DAYS` (snapshot window for annualized APY)
 - `CARBONIQ_USE_OPENAI_NARRATOR`
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
@@ -275,4 +283,4 @@ The frontend does not need these secrets, but it should know the backend is alre
 - Do not touch `anchor/` unless a true backend bug is found.
 - Do not introduce a separate AI backend process; AI routes are already inside the unified API.
 - Do not assume Plaid or Toucan are live integrations yet.
-- Do not assume staking is native Solana delegated staking; it is a real devnet demo transfer into a project-controlled vault.
+- Do not assume staking is user-signed wallet staking from the frontend; staking is currently backend-signed and protocol/provider-configured.

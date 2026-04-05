@@ -8,14 +8,14 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import {
-  STAKING_BASE_APY,
   StakingInfoRequestSchema,
   StakingInfoResponseSchema,
 } from "@carboniq/contracts";
 import {
   computeGreenBonus,
-  computeEffectiveApy,
+  computeEffectiveApyWithBase,
 } from "../services/stakingService.js";
+import { getProtocolBaseApy } from "../services/stakingRateService.js";
 import { prisma } from "../lib/prisma.js";
 import { clampGreenScore } from "../lib/blockchain.js";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
@@ -39,8 +39,9 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
     });
 
     const greenScore = clampGreenScore(user.greenScore);
+    const baseApy = await getProtocolBaseApy();
     const greenBonus = computeGreenBonus(greenScore);
-    const effectiveApy = computeEffectiveApy(greenScore);
+    const effectiveApy = computeEffectiveApyWithBase(greenScore, baseApy);
 
     // Report only executed demo stake transfers, not legacy simulation rows.
     const stakeAgg = await prisma.stakeRecord.aggregate({
@@ -55,7 +56,7 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
     const response = StakingInfoResponseSchema.parse({
       wallet,
       greenScore,
-      baseApy: STAKING_BASE_APY,
+      baseApy: parseFloat(baseApy.toFixed(4)),
       greenBonus: parseFloat(greenBonus.toFixed(4)),
       effectiveApy: parseFloat(effectiveApy.toFixed(4)),
       stakedAmount: stakeAgg._sum.amount ?? 0,

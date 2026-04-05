@@ -102,5 +102,19 @@ export async function ensureDatabaseSchema(): Promise<void> {
     ON "StakeRecord"("solanaTxHash")
   `);
 
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ProtocolRateSnapshot" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "provider" TEXT NOT NULL,
+      "metric" TEXT NOT NULL,
+      "value" REAL NOT NULL,
+      "capturedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ProtocolRateSnapshot_provider_metric_capturedAt_idx"
+    ON "ProtocolRateSnapshot"("provider", "metric", "capturedAt")
+  `);
+
   ensured = true;
 }
