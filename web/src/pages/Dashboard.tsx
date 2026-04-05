@@ -6,7 +6,7 @@ import CarbonFootprintChart from "@/components/dashboard/CarbonFootprintChart";
 import { useGreenScore } from "@/hooks/useGreenScore";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { parseUploadFile, type DemoMode, type DemoScenario, type DemoTransactionInput } from "@/lib/demoBank";
+import { parseUploadFile, type DemoMode, type DemoTransactionInput } from "@/lib/demoBank";
 import { Coins, Database, Globe, Landmark, TreePine, TrendingUp, Zap } from "lucide-react";
 
 interface DemoConnectBankResponse {
@@ -41,8 +41,6 @@ interface StakingInfoResponse {
   accruedYield: number;
   stakeVaultAddress?: string;
 }
-
-const DEMO_SCENARIOS: DemoScenario[] = ["sustainable", "mixed", "irresponsible"];
 
 function formatError(error: unknown): string {
   if (error instanceof Error) {
@@ -82,8 +80,6 @@ export default function Dashboard() {
   const wallet = publicKey?.toBase58() ?? null;
   const { data: greenScore, refetch: refetchGreenScore } = useGreenScore(wallet);
 
-  const [bankMode, setBankMode] = useState<DemoMode>("preset");
-  const [scenario, setScenario] = useState<DemoScenario>("sustainable");
   const [uploadedTransactions, setUploadedTransactions] =
     useState<DemoTransactionInput[] | null>(null);
   const [uploadSummary, setUploadSummary] = useState("");
@@ -100,10 +96,14 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const hasStakePosition = (stakingInfo?.stakedAmount ?? 0) > 0;
   const dashboardLocked = Boolean(wallet) && hasBankTransactions === false;
+  const stakingMultiplier =
+    stakingInfo && stakingInfo.baseApy > 0
+      ? stakingInfo.effectiveApy / stakingInfo.baseApy
+      : null;
 
   const tickerStats = [
     {
-      label: "Total CO₂ Analyzed",
+      label: "Total CO₂ Emissions",
       value: analysisResult
         ? `${(analysisResult.totalCo2eGrams / 1000).toFixed(2)} kg`
         : "—",
@@ -129,6 +129,10 @@ export default function Dashboard() {
       value: stakingInfo ? `${stakingInfo.effectiveApy.toFixed(2)}%` : "—",
       icon: TrendingUp,
       change: "Based on latest green score",
+      accentChange:
+        stakingInfo && stakingMultiplier
+          ? `Booster +${stakingInfo.greenBonus.toFixed(2)}% (${stakingMultiplier.toFixed(2)}x)`
+          : null,
     },
   ];
 
@@ -203,7 +207,6 @@ export default function Dashboard() {
     try {
       const parsed = await parseUploadFile(file);
       setUploadedTransactions(parsed);
-      setBankMode("upload");
       setUploadSummary(`Loaded ${parsed.length} transactions from ${file.name}`);
       setError("");
     } catch (uploadError) {
@@ -220,7 +223,7 @@ export default function Dashboard() {
       return;
     }
 
-    if (bankMode === "upload" && !uploadedTransactions) {
+    if (!uploadedTransactions) {
       setError("Upload a JSON or CSV file before connecting.");
       return;
     }
@@ -229,10 +232,7 @@ export default function Dashboard() {
     setMessage("");
     setIsConnectingBank(true);
     try {
-      const payload =
-        bankMode === "preset"
-          ? { wallet, mode: "preset", scenario }
-          : { wallet, mode: "upload", transactions: uploadedTransactions };
+      const payload = { wallet, mode: "upload", transactions: uploadedTransactions };
       const response = await requestJson<DemoConnectBankResponse>(
         "/api/demo/connect-bank",
         {
@@ -438,13 +438,20 @@ export default function Dashboard() {
                     <p className="text-xs font-medium text-stone-500 uppercase tracking-wider">
                       {stat.label}
                     </p>
-                    <p className="text-2xl font-display font-bold text-stone-100 tracking-tight">
-                      {stat.value}
-                    </p>
-                    <p className="text-xs text-stone-500">{stat.change}</p>
-                  </div>
-                </div>
-              ))}
+                <p className="text-2xl font-display font-bold text-stone-100 tracking-tight">
+                  {stat.value}
+                </p>
+                <p className="text-xs text-stone-500">
+                  {stat.change}
+                  {"accentChange" in stat && stat.accentChange ? (
+                    <span className="ml-1.5 font-semibold text-solar-400">
+                      {stat.accentChange}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+          ))}
 
               <Card>
                 <CardHeader>
@@ -452,84 +459,72 @@ export default function Dashboard() {
                     <Database className="h-5 w-5 text-forest-400" />
                     Bank Connect + Analysis
                   </CardTitle>
-                  <CardDescription>
-                    Use existing dashboard controls to run steps 3-5 of the workflow.
-                  </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <label className="inline-flex items-center gap-2 text-sm text-stone-300">
-                      <input
-                        type="radio"
-                        checked={bankMode === "preset"}
-                        onChange={() => setBankMode("preset")}
-                      />
-                      Preset
-                    </label>
-                    <label className="inline-flex items-center gap-2 text-sm text-stone-300">
-                      <input
-                        type="radio"
-                        checked={bankMode === "upload"}
-                        onChange={() => setBankMode("upload")}
-                      />
-                      Upload
-                    </label>
-                  </div>
-
-                  {bankMode === "preset" && (
-                    <div className="flex flex-wrap gap-2">
-                      {DEMO_SCENARIOS.map((scenarioOption) => (
-                        <Button
-                          key={scenarioOption}
-                          size="sm"
-                          variant={scenarioOption === scenario ? "default" : "outline"}
-                          onClick={() => setScenario(scenarioOption)}
-                        >
-                          {scenarioOption}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <p className="text-sm text-stone-300">Upload `.json` or `.csv`</p>
+                <CardContent className="space-y-3">
+                  <div className="rounded-xl border border-stone-800/70 bg-surface-900/35 p-3 space-y-2">
+                    <p className="text-[11px] uppercase tracking-wider text-stone-500 font-medium">
+                      Upload `.json` or `.csv`
+                    </p>
                     <input
                       type="file"
                       accept=".json,.csv"
                       onChange={handleUpload}
-                      className="block w-full text-sm text-stone-300 file:mr-4 file:rounded-md file:border-0 file:bg-forest-600 file:px-3 file:py-2 file:text-white"
+                      className="block w-full rounded-lg border border-stone-800 bg-surface-950/60 px-3 py-2 text-sm text-stone-300 file:mr-3 file:rounded-md file:border-0 file:bg-forest-600 file:px-3 file:py-1.5 file:text-white file:font-medium"
                     />
-                    {uploadSummary && <p className="text-xs text-stone-500">{uploadSummary}</p>}
+                    {uploadSummary && (
+                      <p className="text-xs text-stone-500 leading-relaxed">{uploadSummary}</p>
+                    )}
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
-                    <Button onClick={handleConnectBank} disabled={isConnectingBank}>
-                      {isConnectingBank ? "Connecting..." : "Connect Bank"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleAnalyzeTransactions}
-                      disabled={isAnalyzing}
-                    >
-                      {isAnalyzing ? "Analyzing..." : "Analyze Transactions"}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={handleRefreshScore}
-                      disabled={isRefreshing}
-                    >
-                      {isRefreshing ? "Refreshing..." : "Refresh Performance"}
-                    </Button>
+                  <div className="rounded-xl border border-stone-800/70 bg-surface-900/35 p-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleConnectBank}
+                        disabled={isConnectingBank}
+                        className="w-full"
+                      >
+                        {isConnectingBank ? "Connecting..." : "Connect Bank"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAnalyzeTransactions}
+                        disabled={isAnalyzing}
+                        className="w-full"
+                      >
+                        {isAnalyzing ? "Analyzing..." : "Analyze Transactions"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleRefreshScore}
+                        disabled={isRefreshing}
+                        className="w-full"
+                      >
+                        {isRefreshing ? "Refreshing..." : "Refresh Performance"}
+                      </Button>
+                    </div>
                   </div>
 
                   {bankConnectResult && (
-                    <p className="text-sm text-forest-300">
-                      Connected source: {bankConnectResult.sourceLabel} ({bankConnectResult.transactionCount} transactions)
-                    </p>
+                    <div className="rounded-lg border border-forest-700/30 bg-forest-700/10 px-3 py-2">
+                      <p className="text-xs text-forest-300">
+                        Connected source: {bankConnectResult.sourceLabel} ({bankConnectResult.transactionCount} transactions)
+                      </p>
+                    </div>
                   )}
 
-                  {error && <p className="text-sm text-clay-400">{error}</p>}
-                  {message && <p className="text-sm text-forest-300">{message}</p>}
+                  {error && (
+                    <div className="rounded-lg border border-clay-700/35 bg-clay-700/10 px-3 py-2">
+                      <p className="text-xs text-clay-300">{error}</p>
+                    </div>
+                  )}
+                  {message && (
+                    <div className="rounded-lg border border-forest-700/30 bg-forest-700/10 px-3 py-2">
+                      <p className="text-xs text-forest-300">{message}</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
