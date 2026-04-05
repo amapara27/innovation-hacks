@@ -42,51 +42,56 @@ export default function CarbonFootprintChart({
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="co2Gradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#c65d2b" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#c65d2b" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="offsetGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#6b9b6b" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#6b9b6b" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#243029" />
+              <CartesianGrid strokeDasharray="4 4" stroke="#292524" strokeOpacity={0.3} />
               <XAxis
                 dataKey="month"
-                stroke="#6b7280"
+                stroke="#78716c"
                 fontSize={12}
+                fontFamily="Plus Jakarta Sans"
                 tickLine={false}
                 axisLine={false}
               />
               <YAxis
-                stroke="#6b7280"
+                stroke="#78716c"
                 fontSize={12}
+                fontFamily="Plus Jakarta Sans"
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(value: number) => `${value}kg`}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#111916",
-                  border: "1px solid #243029",
-                  borderRadius: "0.75rem",
-                  color: "#fff",
+                  backgroundColor: "#1c1917",
+                  border: "1px solid #44403c",
+                  borderRadius: "0.5rem",
+                  color: "#f5f5f4",
                   fontSize: "0.875rem",
+                  fontFamily: "Plus Jakarta Sans",
+                  padding: "12px",
+                  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
                 }}
               />
               <Area
                 type="monotone"
                 dataKey="co2"
-                stroke="#ef4444"
-                strokeWidth={2}
+                stroke="#c65d2b"
+                strokeWidth={2.5}
                 fill="url(#co2Gradient)"
                 name="CO₂ Emitted (kg)"
               />
               <Area
                 type="monotone"
                 dataKey="offset"
-                stroke="#22c55e"
-                strokeWidth={2}
+                stroke="#6b9b6b"
+                strokeWidth={2.5}
                 fill="url(#offsetGradient)"
                 name="CO₂ Offset (kg)"
               />

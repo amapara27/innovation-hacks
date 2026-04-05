@@ -13,8 +13,27 @@ import Staking from "@/pages/Staking";
 import Swaps from "@/pages/Swaps";
 import Leaderboard from "@/pages/Leaderboard";
 import Sidebar from "@/components/layout/Sidebar";
+import { SidebarProvider, useSidebar } from "@/contexts/SidebarContext";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
+
+function AppContent() {
+  const { isExpanded } = useSidebar();
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <main className={`flex-1 p-6 lg:p-8 transition-all duration-300 ${isExpanded ? "ml-64" : "ml-20"}`}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/staking" element={<Staking />} />
+          <Route path="/swaps" element={<Swaps />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
 
 function App() {
   const endpoint = useMemo(() => clusterApiUrl("devnet"), []);
@@ -24,17 +43,9 @@ function App() {
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 p-6 lg:p-8 ml-64">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/staking" element={<Staking />} />
-                <Route path="/swaps" element={<Swaps />} />
-                <Route path="/leaderboard" element={<Leaderboard />} />
-              </Routes>
-            </main>
-          </div>
+          <SidebarProvider>
+            <AppContent />
+          </SidebarProvider>
         </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>

@@ -4,27 +4,27 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-carbon-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium tracking-wide transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
         default:
-          "bg-carbon-600 text-white hover:bg-carbon-500 shadow-lg shadow-carbon-600/25",
+          "bg-gradient-to-br from-forest-600 to-forest-700 text-white hover:from-forest-500 hover:to-forest-600 shadow-lg shadow-forest-900/40 hover:shadow-xl hover:shadow-forest-900/50 border border-forest-600/30",
         destructive:
-          "bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-600/25",
+          "bg-gradient-to-br from-clay-600 to-clay-700 text-white hover:from-clay-500 hover:to-clay-600 shadow-lg shadow-clay-900/40 border border-clay-600/30",
         outline:
-          "border border-surface-300 bg-transparent hover:bg-surface-200 hover:border-carbon-500/50",
+          "border border-stone-700 bg-transparent hover:bg-surface-900/60 hover:border-forest-600/50 text-stone-300 hover:text-stone-100",
         secondary:
-          "bg-surface-200 text-white hover:bg-surface-300",
+          "bg-surface-900/80 text-stone-200 hover:bg-surface-800 border border-stone-800",
         ghost:
-          "hover:bg-surface-200 hover:text-white",
+          "hover:bg-surface-900/60 hover:text-stone-100 text-stone-400",
         link:
-          "text-carbon-400 underline-offset-4 hover:underline",
+          "text-forest-400 underline-offset-4 hover:underline hover:text-forest-300",
       },
       size: {
         default: "h-10 px-5 py-2",
         sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-12 rounded-lg px-8 text-base",
+        lg: "h-12 rounded-lg px-8 text-base font-display",
         icon: "h-10 w-10",
       },
     },
