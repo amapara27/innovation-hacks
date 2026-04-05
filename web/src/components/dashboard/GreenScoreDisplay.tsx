@@ -1,15 +1,18 @@
 import { Progress } from "@/components/ui/Progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { TrendingUp, Award } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface GreenScoreDisplayProps {
   score: number; // 0–100
   label?: string;
+  extraContent?: ReactNode;
 }
 
 export default function GreenScoreDisplay({
   score,
   label = "Green Score",
+  extraContent,
 }: GreenScoreDisplayProps) {
   // Tier thresholds
   const tiers = [
@@ -98,6 +101,8 @@ export default function GreenScoreDisplay({
             </p>
           </div>
         )}
+
+        {extraContent && <div className="space-y-3">{extraContent}</div>}
       </CardContent>
     </Card>
   );

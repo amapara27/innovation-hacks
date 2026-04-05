@@ -20,6 +20,7 @@ import { getStakeVaultAddress } from "../services/stakeExecutionService.js";
 import { prisma } from "../lib/prisma.js";
 import { clampGreenScore } from "../lib/blockchain.js";
 import { getZodLikeDetails, isZodLikeError } from "../lib/validation.js";
+import { getNetAccruedYieldForUser } from "../services/behaviorIncentiveService.js";
 
 export const stakingInfoRouter = Router();
 
@@ -59,8 +60,9 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
         solanaTxHash: { not: null },
         status: "confirmed",
       },
-      _sum: { amount: true, estimatedYield: true },
+      _sum: { amount: true },
     });
+    const accruedYield = await getNetAccruedYieldForUser(user.id);
 
     const response = StakingInfoResponseSchema.parse({
       wallet,
@@ -69,9 +71,7 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
       greenBonus: parseFloat(greenBonus.toFixed(4)),
       effectiveApy: parseFloat(effectiveApy.toFixed(4)),
       stakedAmount: stakeAgg._sum.amount ?? 0,
-      accruedYield: parseFloat(
-        (stakeAgg._sum.estimatedYield ?? 0).toFixed(6)
-      ),
+      accruedYield: parseFloat(accruedYield.toFixed(6)),
       stakeVaultAddress: safeStakeVaultAddress(),
     });
 

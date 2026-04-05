@@ -13,6 +13,10 @@ import {
 import { clampNumber, roundTo } from "../lib/aiMath.js";
 import { prisma } from "../lib/prisma.js";
 import { emissionsService } from "./emissionsService.js";
+import {
+  applyBehaviorPenalty,
+  enforceLowScoreYieldReset,
+} from "./behaviorIncentiveService.js";
 
 export function computeWeightedScore(
   breakdown: GreenScoreBreakdown | Record<keyof typeof GREEN_SCORE_WEIGHTS, number>
@@ -91,15 +95,14 @@ export async function refreshStoredGreenScore(
     communityImpact: roundTo(communityImpact, 2),
   };
 
-  const score = clampGreenScore(computeWeightedScore(breakdown));
-  const tier = getGreenScoreTier(score);
-
-  await prisma.user.upsert({
+  const baseScore = clampGreenScore(computeWeightedScore(breakdown));
+  const baseTier = getGreenScoreTier(baseScore);
+  const user = await prisma.user.upsert({
     where: { walletAddress: wallet },
     update: {
-      greenScore: score,
-      greenScoreCurrent: score,
-      greenTierCurrent: tier,
+      greenScore: baseScore,
+      greenScoreCurrent: baseScore,
+      greenTierCurrent: baseTier,
       breakdownTransactionEfficiency: breakdown.transactionEfficiency,
       breakdownSpendingHabits: breakdown.spendingHabits,
       breakdownCarbonOffsets: breakdown.carbonOffsets,
@@ -109,9 +112,9 @@ export async function refreshStoredGreenScore(
     },
     create: {
       walletAddress: wallet,
-      greenScore: score,
-      greenScoreCurrent: score,
-      greenTierCurrent: tier,
+      greenScore: baseScore,
+      greenScoreCurrent: baseScore,
+      greenTierCurrent: baseTier,
       breakdownTransactionEfficiency: breakdown.transactionEfficiency,
       breakdownSpendingHabits: breakdown.spendingHabits,
       breakdownCarbonOffsets: breakdown.carbonOffsets,
@@ -119,6 +122,44 @@ export async function refreshStoredGreenScore(
       totalCo2eOffset: confirmedOffsetGrams,
       offsetCount,
     },
+  });
+  const irresponsibleSpend =
+    snapshot.categorySpendTotals.travel +
+    snapshot.categorySpendTotals.gas_fuel +
+    snapshot.categorySpendTotals.transportation +
+    snapshot.categorySpendTotals.shopping;
+  const irresponsibleSpendShare =
+    snapshot.totalSpendUsd > 0 ? irresponsibleSpend / snapshot.totalSpendUsd : 0;
+  const snapshotFingerprint = [
+    snapshot.response.transactionCount,
+    roundTo(snapshot.totalSpendUsd, 2),
+    roundTo(snapshot.totalCo2eGrams, 2),
+    roundTo(breakdown.spendingHabits, 2),
+    roundTo(irresponsibleSpendShare, 4),
+  ].join(":");
+
+  const { adjustedScore } = await applyBehaviorPenalty({
+    userId: user.id,
+    baseScore,
+    spendingHabits: breakdown.spendingHabits,
+    irresponsibleSpendShare,
+    snapshotFingerprint,
+  });
+
+  const score = clampGreenScore(adjustedScore);
+  const tier = getGreenScoreTier(score);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      greenScore: score,
+      greenScoreCurrent: score,
+      greenTierCurrent: tier,
+    },
+  });
+  await enforceLowScoreYieldReset({
+    offenderUserId: user.id,
+    offenderWallet: wallet,
+    score,
   });
 
   const totalUsers = await prisma.user.count({

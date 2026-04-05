@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { type ChangeEvent, useEffect, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Slider } from "@/components/ui/Slider";
 import { useGreenScore } from "@/hooks/useGreenScore";
+import { parseUploadFile, type DemoMode, type DemoTransactionInput } from "@/lib/demoBank";
+import { isUploadRefreshRequired, markUploadCompleted, uploadEpochGate } from "@/lib/uploadEpochGate";
 import { Landmark, PenLine, Sparkles } from "lucide-react";
 
 interface SimulateStakeResponse {
@@ -40,11 +42,53 @@ interface StakingInfoResponse {
   stakeVaultAddress?: string;
 }
 
+interface AnalyzeResponse {
+  wallet: string;
+  transactionCount: number;
+  transactions: Array<{
+    transactionId: string;
+  }>;
+}
+
+interface DemoConnectBankResponse {
+  wallet: string;
+  mode: DemoMode;
+  sourceLabel: string;
+  transactionCount: number;
+  connectedAt: string;
+}
+
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
   return "Unexpected error.";
+}
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const body = await response.json();
+      if (typeof body?.error === "string") {
+        message = body.error;
+      }
+    } catch {
+      // fallback message
+    }
+    throw new Error(message);
+  }
+  return response.json() as Promise<T>;
+}
+
+function hasNonSeededTransactions(response: AnalyzeResponse): boolean {
+  if (response.transactionCount <= 0) {
+    return false;
+  }
+  return response.transactions.some(
+    (transaction) => !transaction.transactionId.startsWith("seeded_")
+  );
 }
 
 export default function Staking() {
@@ -60,10 +104,128 @@ export default function Staking() {
   const [stakingInfo, setStakingInfo] = useState<StakingInfoResponse | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isStaking, setIsStaking] = useState(false);
+  const [isCheckingTransactions, setIsCheckingTransactions] = useState(false);
+  const [hasBankTransactions, setHasBankTransactions] = useState<boolean | null>(null);
+  const [uploadRefreshRequired, setUploadRefreshRequired] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadedTransactions, setUploadedTransactions] =
+    useState<DemoTransactionInput[] | null>(null);
+  const [uploadSummary, setUploadSummary] = useState("");
+  const [isUploadingLedger, setIsUploadingLedger] = useState(false);
+  const [uploadGateError, setUploadGateError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
   const score = greenScore?.score ?? 0;
+  const stakingBlocked =
+    Boolean(wallet) &&
+    !isCheckingTransactions &&
+    (hasBankTransactions !== true || uploadRefreshRequired);
+
+  useEffect(() => {
+    if (!wallet) {
+      setIsCheckingTransactions(false);
+      setHasBankTransactions(null);
+      setUploadRefreshRequired(false);
+      setShowUploadModal(false);
+      setUploadedTransactions(null);
+      setUploadSummary("");
+      setUploadGateError("");
+      return;
+    }
+
+    let cancelled = false;
+    setIsCheckingTransactions(true);
+    void (async () => {
+      try {
+        const response = await requestJson<AnalyzeResponse>("/api/analyze-transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wallet, limit: 1 }),
+        });
+        const hasTransactions = hasNonSeededTransactions(response);
+        const refreshRequired = isUploadRefreshRequired(wallet);
+        if (!cancelled) {
+          setHasBankTransactions(hasTransactions);
+          setUploadRefreshRequired(refreshRequired);
+          setShowUploadModal(!hasTransactions || refreshRequired);
+        }
+      } catch {
+        if (!cancelled) {
+          setHasBankTransactions(false);
+          setUploadRefreshRequired(true);
+          setShowUploadModal(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingTransactions(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet]);
+
+  async function handleUploadForGate(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed = await parseUploadFile(file);
+      setUploadedTransactions(parsed);
+      setUploadSummary(`Loaded ${parsed.length} transactions from ${file.name}`);
+      setUploadGateError("");
+    } catch (uploadError) {
+      setUploadedTransactions(null);
+      setUploadSummary("");
+      setUploadGateError(formatError(uploadError));
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleUploadAndUnlock() {
+    if (!wallet) {
+      setUploadGateError("Connect your wallet first.");
+      return;
+    }
+    if (!uploadedTransactions) {
+      setUploadGateError("Upload a JSON or CSV file first.");
+      return;
+    }
+
+    setUploadGateError("");
+    setIsUploadingLedger(true);
+    try {
+      const response = await requestJson<DemoConnectBankResponse>("/api/demo/connect-bank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet,
+          mode: "upload",
+          transactions: uploadedTransactions,
+        }),
+      });
+
+      if (response.transactionCount > 0) {
+        setHasBankTransactions(true);
+        markUploadCompleted(wallet, response.connectedAt);
+        setUploadRefreshRequired(false);
+        setShowUploadModal(false);
+        setMessage("Transactions uploaded. Staking is now unlocked.");
+      } else {
+        setUploadGateError("No transactions were uploaded. Please try another file.");
+      }
+    } catch (uploadError) {
+      setUploadGateError(formatError(uploadError));
+    } finally {
+      setIsUploadingLedger(false);
+    }
+  }
 
   async function simulate() {
     setError("");
@@ -94,6 +256,15 @@ export default function Staking() {
   async function signAndStake() {
     if (!wallet || !publicKey || !sendTransaction) {
       setError("Connect a wallet with signing support first.");
+      return;
+    }
+    if (isCheckingTransactions) {
+      setError("Checking transaction freshness. Please wait a moment.");
+      return;
+    }
+    if (stakingBlocked) {
+      setShowUploadModal(true);
+      setError("Upload recent transactions before staking.");
       return;
     }
 
@@ -236,13 +407,19 @@ export default function Staking() {
               <Button
                 size="lg"
                 variant="secondary"
-                disabled={isStaking}
+                disabled={isStaking || stakingBlocked || isCheckingTransactions}
                 onClick={signAndStake}
               >
                 <PenLine className="h-4 w-4" />
                 {isStaking ? "Signing + Staking..." : "Sign & Stake"}
               </Button>
             </div>
+            {wallet && stakingBlocked && (
+              <p className="text-sm text-solar-400">
+                Upload recent transactions every {uploadEpochGate.refreshWindowDays} days
+                to unlock staking.
+              </p>
+            )}
             {error && <p className="text-sm text-clay-400">{error}</p>}
             {message && <p className="text-sm text-forest-300">{message}</p>}
           </CardContent>
@@ -309,6 +486,48 @@ export default function Staking() {
           </CardContent>
         </Card>
       </div>
+
+      {wallet && showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-surface-950/85 backdrop-blur-sm"
+            onClick={() => setShowUploadModal(false)}
+            aria-label="Close upload prompt"
+          />
+          <Card className="relative z-10 w-full max-w-lg border-forest-600/35">
+            <CardHeader>
+              <CardTitle>Upload Transactions Before Staking</CardTitle>
+              <CardDescription>
+                {hasBankTransactions === true && uploadRefreshRequired
+                  ? `Your last upload is older than ${uploadEpochGate.refreshWindowDays} days. Upload a fresh transaction file to keep staking enabled.`
+                  : "We need recent transaction data to calculate your green booster before you stake."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <input
+                type="file"
+                accept=".json,.csv"
+                onChange={handleUploadForGate}
+                className="block w-full rounded-lg border border-stone-800 bg-surface-950/60 px-3 py-2 text-sm text-stone-300 file:mr-3 file:rounded-md file:border-0 file:bg-forest-600 file:px-3 file:py-1.5 file:text-white file:font-medium"
+              />
+              {uploadSummary && <p className="text-xs text-stone-400">{uploadSummary}</p>}
+              {uploadGateError && <p className="text-sm text-clay-400">{uploadGateError}</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handleUploadAndUnlock}
+                  disabled={isUploadingLedger || !uploadedTransactions}
+                >
+                  {isUploadingLedger ? "Uploading..." : "Upload + Unlock Staking"}
+                </Button>
+                <Button variant="outline" onClick={() => setShowUploadModal(false)}>
+                  Later
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

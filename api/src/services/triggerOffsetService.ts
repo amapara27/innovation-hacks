@@ -39,7 +39,7 @@ export async function getTriggerOffsetDecision(
     _sum: { co2OffsetGrams: true },
   });
 
-  const confirmedOffsetGrams = confirmedOffsets._sum.co2OffsetGrams ?? 0;
+  const confirmedOffsetGrams = confirmedOffsets._sum?.co2OffsetGrams ?? 0;
   const outstandingGrams = roundTo(
     snapshot.totalCo2eGrams - confirmedOffsetGrams,
     2

@@ -49,6 +49,20 @@ let nftMetadataRouteModule: NftMetadataRouteModule;
 let recordOffsetRouteModule: RecordOffsetRouteModule;
 let greenScoreServiceModule: GreenScoreServiceModule;
 
+const MONGO_COLLECTIONS = [
+  "RecommendationAction",
+  "RecommendationRun",
+  "SustainabilityFundLedger",
+  "YieldRedistributionCredit",
+  "YieldRedistributionEvent",
+  "UserBehaviorState",
+  "ImpactRecord",
+  "StakeRecord",
+  "Transaction",
+  "ProtocolRateSnapshot",
+  "User",
+] as const;
+
 function getRouteHandler(router: Router, method: "GET" | "POST") {
   const lowerMethod = method.toLowerCase();
   const layer = (
@@ -145,12 +159,44 @@ before(async () => {
 });
 
 beforeEach(async () => {
-  await prismaModule.prisma.recommendationAction.deleteMany();
-  await prismaModule.prisma.recommendationRun.deleteMany();
-  await prismaModule.prisma.impactRecord.deleteMany();
-  await prismaModule.prisma.stakeRecord.deleteMany();
-  await prismaModule.prisma.transaction.deleteMany();
-  await prismaModule.prisma.user.deleteMany();
+  try {
+    await prismaModule.prisma.recommendationAction.deleteMany();
+    await prismaModule.prisma.recommendationRun.deleteMany();
+    await prismaModule.prisma.sustainabilityFundLedger.deleteMany();
+    await prismaModule.prisma.yieldRedistributionCredit.deleteMany();
+    await prismaModule.prisma.yieldRedistributionEvent.deleteMany();
+    await prismaModule.prisma.userBehaviorState.deleteMany();
+    await prismaModule.prisma.impactRecord.deleteMany();
+    await prismaModule.prisma.stakeRecord.deleteMany();
+    await prismaModule.prisma.transaction.deleteMany();
+    await prismaModule.prisma.protocolRateSnapshot.deleteMany();
+    await prismaModule.prisma.user.deleteMany();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("Transactions are not supported by this deployment")) {
+      throw error;
+    }
+
+    for (const collection of MONGO_COLLECTIONS) {
+      try {
+        await prismaModule.prisma.$runCommandRaw({
+          delete: collection,
+          deletes: [{ q: {}, limit: 0 }],
+        });
+      } catch (runCommandError) {
+        const runCommandMessage =
+          runCommandError instanceof Error
+            ? runCommandError.message
+            : String(runCommandError);
+        const namespaceMissing =
+          runCommandMessage.includes("NamespaceNotFound") ||
+          runCommandMessage.includes("ns not found");
+        if (!namespaceMissing) {
+          throw runCommandError;
+        }
+      }
+    }
+  }
 });
 
 after(async () => {

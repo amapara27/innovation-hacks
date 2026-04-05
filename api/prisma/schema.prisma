@@ -11,32 +11,35 @@ datasource db {
 }
 
 model User {
-  id                         String   @id @default(auto()) @map("_id") @db.ObjectId
-  walletAddress              String   @unique
-  greenScore                 Int      @default(0)
-  greenScoreCurrent          Int      @default(0)
-  greenTierCurrent           String   @default("seedling")
+  id                            String   @id @default(auto()) @map("_id") @db.ObjectId
+  walletAddress                 String   @unique
+  greenScore                    Int      @default(0)
+  greenScoreCurrent             Int      @default(0)
+  greenTierCurrent              String   @default("seedling")
   breakdownTransactionEfficiency Float @default(0)
-  breakdownSpendingHabits    Float    @default(0)
-  breakdownCarbonOffsets     Float    @default(0)
-  breakdownCommunityImpact   Float    @default(0)
-  stakingBaseApy             Float    @default(0)
-  stakingGreenBonus          Float    @default(0)
-  stakingEffectiveApy        Float    @default(0)
-  stakingStakedAmount        Float    @default(0)
-  stakingAccruedYield        Float    @default(0)
-  stakeVaultAddress          String?
-  stakingUpdatedAt           DateTime?
-  totalCo2eOffset            Int      @default(0)
-  offsetCount                Int      @default(0)
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  breakdownSpendingHabits       Float    @default(0)
+  breakdownCarbonOffsets        Float    @default(0)
+  breakdownCommunityImpact      Float    @default(0)
+  stakingBaseApy                Float    @default(0)
+  stakingGreenBonus             Float    @default(0)
+  stakingEffectiveApy           Float    @default(0)
+  stakingStakedAmount           Float    @default(0)
+  stakingAccruedYield           Float    @default(0)
+  stakeVaultAddress             String?
+  stakingUpdatedAt              DateTime?
+  totalCo2eOffset               Int      @default(0)
+  offsetCount                   Int      @default(0)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 
-  transactions       Transaction[]
-  impacts            ImpactRecord[]
-  stakes             StakeRecord[]
-  recommendationRuns RecommendationRun[]
+  transactions                  Transaction[]
+  impacts                       ImpactRecord[]
+  stakes                        StakeRecord[]
+  recommendationRuns            RecommendationRun[]
   recommendationActions RecommendationAction[]
+  behaviorState                UserBehaviorState?
+  redistributionEvents         YieldRedistributionEvent[] @relation("OffenderEvents")
+  redistributionCredits        YieldRedistributionCredit[] @relation("RecipientCredits")
 }
 
 model Transaction {
@@ -145,4 +148,63 @@ model ProtocolRateSnapshot {
   capturedAt DateTime @default(now())
 
   @@index([provider, metric, capturedAt(sort: Desc)])
+}
+
+model UserBehaviorState {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String   @unique @db.ObjectId
+  irresponsibleStreak   Int      @default(0)
+  lastPenaltyPoints     Int      @default(0)
+  lastIrresponsibleShare Float   @default(0)
+  lastSnapshotFingerprint String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model YieldRedistributionEvent {
+  id                        String   @id @default(auto()) @map("_id") @db.ObjectId
+  offenderUserId            String   @db.ObjectId
+  offenderWallet            String
+  triggeredScore            Int
+  resetAmount               Float
+  redistributedToUsers      Float
+  redistributedToNonprofits Float
+  reason                    String
+  createdAt                 DateTime @default(now())
+
+  offenderUser User @relation("OffenderEvents", fields: [offenderUserId], references: [id])
+  credits     YieldRedistributionCredit[]
+  fundLedger  SustainabilityFundLedger[]
+
+  @@index([offenderUserId, createdAt(sort: Desc)])
+  @@index([offenderWallet, createdAt(sort: Desc)])
+}
+
+model YieldRedistributionCredit {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId   String   @db.ObjectId
+  userId    String   @db.ObjectId
+  amount    Float
+  createdAt DateTime @default(now())
+
+  event YieldRedistributionEvent @relation(fields: [eventId], references: [id])
+  user  User                     @relation("RecipientCredits", fields: [userId], references: [id])
+
+  @@index([eventId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model SustainabilityFundLedger {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId   String   @db.ObjectId
+  amount    Float
+  recipient String   @default("verified_nonprofit_pool")
+  note      String?
+  createdAt DateTime @default(now())
+
+  event YieldRedistributionEvent @relation(fields: [eventId], references: [id])
+
+  @@index([eventId, createdAt(sort: Desc)])
 }
