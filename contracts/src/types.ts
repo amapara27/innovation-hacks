@@ -39,6 +39,8 @@ import {
   StakingInfoResponseSchema,
   SimulateStakeRequestSchema,
   SimulateStakeResponseSchema,
+  StakeRequestSchema,
+  StakeResponseSchema,
 
   // Leaderboard
   LeaderboardRequestSchema,
@@ -89,6 +91,8 @@ export type StakingInfoRequest = z.infer<typeof StakingInfoRequestSchema>;
 export type StakingInfoResponse = z.infer<typeof StakingInfoResponseSchema>;
 export type SimulateStakeRequest = z.infer<typeof SimulateStakeRequestSchema>;
 export type SimulateStakeResponse = z.infer<typeof SimulateStakeResponseSchema>;
+export type StakeRequest = z.infer<typeof StakeRequestSchema>;
+export type StakeResponse = z.infer<typeof StakeResponseSchema>;
 
 // ─── Leaderboard ────────────────────────────────────────────────────────────
 

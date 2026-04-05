@@ -1,3 +1,4 @@
+import "dotenv/config";
 /**
  * ╔═══════════════════════════════════════════════════════════════════════════╗
  * ║  CarbonIQ — Solana Service                                              ║
@@ -83,6 +84,10 @@ function getConnection(): Connection {
   return connection;
 }
 
+export function getSolanaConnection(): Connection {
+  return getConnection();
+}
+
 function getPayer(): Keypair {
   if (!payer) {
     const secretKey = process.env.SOLANA_PAYER_SECRET_KEY;
@@ -108,6 +113,10 @@ function getPayer(): Keypair {
   }
 
   return payer;
+}
+
+export function getApiPayer(): Keypair {
+  return getPayer();
 }
 
 function getProgram(): anchor.Program<CarbonIq> {
@@ -138,6 +147,10 @@ function getProgram(): anchor.Program<CarbonIq> {
 
 async function confirmSignature(signature: string): Promise<void> {
   await getConnection().confirmTransaction(signature, "confirmed");
+}
+
+export async function confirmSolanaSignature(signature: string): Promise<void> {
+  await confirmSignature(signature);
 }
 
 async function withRetries<T>(operation: () => Promise<T>): Promise<T> {

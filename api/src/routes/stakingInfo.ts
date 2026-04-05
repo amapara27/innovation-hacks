@@ -42,9 +42,13 @@ stakingInfoRouter.get("/", async (req: Request, res: Response) => {
     const greenBonus = computeGreenBonus(greenScore);
     const effectiveApy = computeEffectiveApy(greenScore);
 
-    // Sum up any staked amounts (from simulation history)
+    // Report only executed demo stake transfers, not legacy simulation rows.
     const stakeAgg = await prisma.stakeRecord.aggregate({
-      where: { userId: user.id },
+      where: {
+        userId: user.id,
+        solanaTxHash: { not: null },
+        status: "confirmed",
+      },
       _sum: { amount: true, estimatedYield: true },
     });
 

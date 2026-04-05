@@ -6,8 +6,11 @@ import { greenScoreRouter } from "./routes/greenScore.js";
 import { leaderboardRouter } from "./routes/leaderboard.js";
 import { nftMetadataRouter } from "./routes/nftMetadata.js";
 import { recordOffsetRouter } from "./routes/recordOffset.js";
+import { stakeRouter } from "./routes/stake.js";
 import { simulateStakeRouter } from "./routes/simulateStake.js";
 import { stakingInfoRouter } from "./routes/stakingInfo.js";
+import { swapSuggestionsRouter } from "./routes/swapSuggestions.js";
+import { triggerOffsetRouter } from "./routes/triggerOffset.js";
 
 export function createApp() {
   const app = express();
@@ -23,8 +26,11 @@ export function createApp() {
 
   app.use("/api/analyze-transactions", analyzeTransactionsRouter);
   app.use("/api/green-score", greenScoreRouter);
+  app.use("/api/swap-suggestions", swapSuggestionsRouter);
+  app.use("/api/trigger-offset", triggerOffsetRouter);
 
   app.use("/api/simulate-stake", simulateStakeRouter);
+  app.use("/api/stake", stakeRouter);
   app.use("/api/staking-info", stakingInfoRouter);
   app.use("/api/record-offset", recordOffsetRouter);
   app.use("/api/leaderboard", leaderboardRouter);

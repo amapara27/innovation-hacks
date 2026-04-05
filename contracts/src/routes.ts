@@ -67,6 +67,13 @@ export const API_ROUTES = {
     owner: "blockchain" as const,
   },
 
+  /** Execute a real demo stake transfer on devnet. */
+  STAKE: {
+    path: "/api/stake",
+    method: "POST" as const,
+    owner: "blockchain" as const,
+  },
+
   /** Green Score leaderboard from stored scores. */
   LEADERBOARD: {
     path: "/api/leaderboard",
